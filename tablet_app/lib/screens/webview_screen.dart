@@ -91,6 +91,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     _loadConfigAndWebView();
     // On Android: check permission after build; show dialog if not granted (user tap = system shows permission dialog)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _kioskService.startLockTask();
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       if (!Platform.isAndroid) return;
@@ -1262,93 +1263,12 @@ class _WebViewScreenState extends State<WebViewScreen>
     _adminTapCount++;
     if (_adminTapCount >= 5) {
       _adminTapCount = 0;
-      _showPinDialog();
+      _showAdminMenu();
       return;
     }
     _adminTapTimer = Timer(const Duration(seconds: 2), () {
       _adminTapCount = 0;
     });
-  }
-
-  Future<void> _showPinDialog() async {
-    final pin = widget.storage.adminPin;
-    String entered = '';
-    String? error;
-
-    final verified = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) {
-          void tapDigit(String d) {
-            if (entered.length >= 4) return;
-            entered += d;
-            if (entered.length == 4) {
-              if (entered == pin) {
-                Navigator.of(ctx).pop(true);
-              } else {
-                setS(() { error = 'Wrong PIN'; entered = ''; });
-              }
-            } else {
-              setS(() {});
-            }
-          }
-          void tapDel() => setS(() {
-            error = null;
-            if (entered.isNotEmpty) entered = entered.substring(0, entered.length - 1);
-          });
-
-          return Dialog(
-            backgroundColor: const Color(0xFF0f172a),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.lock_outline, color: Colors.white54, size: 36),
-                  const SizedBox(height: 12),
-                  const Text('Enter Admin PIN',
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (i) {
-                      final filled = i < entered.length;
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 10),
-                        width: 16, height: 16,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: filled ? Colors.white : Colors.transparent,
-                          border: Border.all(color: filled ? Colors.white : Colors.white38, width: 2),
-                        ),
-                      );
-                    }),
-                  ),
-                  const SizedBox(height: 10),
-                  AnimatedOpacity(
-                    opacity: error != null ? 1 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Text(error ?? ' ',
-                        style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
-                  ),
-                  const SizedBox(height: 16),
-                  _PinKeypad(onDigit: tapDigit, onDelete: tapDel),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-
-    if (verified == true && mounted) _showAdminMenu();
   }
 
   Future<void> _showAdminMenu() async {
@@ -1417,7 +1337,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       }
       return;
     }
-    await _showPinDialog();
+    _showAdminMenu();
   }
 
   @override
@@ -1565,64 +1485,6 @@ class _WebViewScreenState extends State<WebViewScreen>
           ),
         ),
       ),
-    );
-  }
-}
-
-class _PinKeypad extends StatelessWidget {
-  const _PinKeypad({required this.onDigit, required this.onDelete});
-  final void Function(String) onDigit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = [
-      ['1', '2', '3'],
-      ['4', '5', '6'],
-      ['7', '8', '9'],
-      ['', '0', 'del'],
-    ];
-    return Column(
-      children: rows.map((row) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: row.map((key) {
-            if (key.isEmpty) return const SizedBox(width: 72);
-            final isDel = key == 'del';
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Material(
-                color: isDel
-                    ? Colors.red.shade900.withValues(alpha: 0.6)
-                    : Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: isDel ? onDelete : () => onDigit(key),
-                  child: SizedBox(
-                    width: 72,
-                    height: 60,
-                    child: Center(
-                      child: isDel
-                          ? const Icon(Icons.backspace_outlined,
-                              color: Colors.white70, size: 20)
-                          : Text(
-                              key,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w300,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      )).toList(),
     );
   }
 }

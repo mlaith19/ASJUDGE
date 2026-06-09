@@ -12,9 +12,7 @@ class StorageService {
   static const _keyLastKnownTargetUrl = 'last_known_target_url';
   static const _keyBackendApiBaseUrl = 'backend_api_base_url';
   static const _keyJudgeSelectionInvalidated = 'judge_selection_invalidated';
-  static const _keyAdminPin = 'admin_pin';
-
-  final SharedPreferences _prefs;
+final SharedPreferences _prefs;
 
   StorageService(this._prefs);
 
@@ -74,10 +72,6 @@ class StorageService {
   /// True when we navigated to setup because saved judge was not found on backend (show banner).
   bool get judgeSelectionInvalidated => _prefs.getBool(_keyJudgeSelectionInvalidated) ?? false;
   Future<void> setJudgeSelectionInvalidated(bool value) => _prefs.setBool(_keyJudgeSelectionInvalidated, value);
-
-  String get adminPin => _prefs.getString(_keyAdminPin) ?? '';
-  bool get hasPinSet => adminPin.length == 4;
-  Future<void> setAdminPin(String pin) => _prefs.setString(_keyAdminPin, pin);
 
   /// Clear saved judge selection and mark setup not done. Keeps deviceId and backend URL. Call when backend reports judge not found.
   Future<void> clearJudgeSelection() async {
