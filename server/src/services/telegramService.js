@@ -54,4 +54,19 @@ function notify(eventType, data = {}) {
     .catch(() => {});
 }
 
-module.exports = { notify, sendMessage };
+function getUpdates(token) {
+  return new Promise((resolve) => {
+    const req = https.request(
+      { hostname: 'api.telegram.org', path: `/bot${token}/getUpdates`, method: 'GET' },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => { try { resolve(JSON.parse(raw)); } catch { resolve({ ok: false }); } });
+      }
+    );
+    req.on('error', (e) => resolve({ ok: false, error: e.message }));
+    req.end();
+  });
+}
+
+module.exports = { notify, sendMessage, getUpdates };

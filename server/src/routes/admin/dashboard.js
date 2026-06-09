@@ -316,6 +316,18 @@ router.post('/settings/update', requireAuth, (req, res) => {
   res.redirect('/admin/settings');
 });
 
+router.get('/settings/telegram-updates', requireAuth, async (req, res) => {
+  const settings = settingsService.get();
+  const token = (settings.telegram_bot_token || '').trim();
+  if (!token) return res.json({ ok: false, error: 'No bot token saved' });
+  try {
+    const result = await require('../../services/telegramService').getUpdates(token);
+    res.json(result);
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 router.post('/settings/telegram-test', requireAuth, async (req, res) => {
   const settings = settingsService.get();
   const token = (settings.telegram_bot_token || '').trim();
