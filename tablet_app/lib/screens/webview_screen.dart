@@ -4,8 +4,8 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:vibration/vibration.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -21,7 +21,6 @@ import '../services/heartbeat_telemetry.dart';
 import '../services/socket_service.dart';
 import '../services/telemetry_debug_log.dart';
 import '../utils/url_validator.dart';
-import 'backend_resolver_screen.dart';
 import 'setup_screen.dart';
 
 class _UrlNorm {
@@ -375,7 +374,7 @@ class _WebViewScreenState extends State<WebViewScreen>
 
   Future<void> _triggerAdminAlert() async {
     try {
-      final bool? hasVibrator = await Vibration.hasVibrator();
+      final bool hasVibrator = await Vibration.hasVibrator();
       if (hasVibrator == true) {
         Vibration.vibrate(pattern: [0, 300, 100, 200, 100, 400]);
       } else {
@@ -1032,7 +1031,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     try {
       final result = await c.runJavaScriptReturningResult(_detectLoginStatusJs);
       final s = (result is String ? result : result.toString()).trim().toUpperCase();
-      if (s == 'LOGGED_IN' || s == 'LOGGED_OUT') return s!;
+      if (s == 'LOGGED_IN' || s == 'LOGGED_OUT') return s;
     } catch (_) {}
     return 'UNKNOWN';
   }
@@ -1263,7 +1262,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     _adminTapCount++;
     if (_adminTapCount >= 5) {
       _adminTapCount = 0;
-      _showExitDialog();
+      _showPinDialog();
       return;
     }
     _adminTapTimer = Timer(const Duration(seconds: 2), () {
@@ -1271,13 +1270,94 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
   }
 
-  Future<void> _showExitDialog() async {
+  Future<void> _showPinDialog() async {
+    final pin = widget.storage.adminPin;
+    String entered = '';
+    String? error;
+
+    final verified = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          void tapDigit(String d) {
+            if (entered.length >= 4) return;
+            entered += d;
+            if (entered.length == 4) {
+              if (entered == pin) {
+                Navigator.of(ctx).pop(true);
+              } else {
+                setS(() { error = 'Wrong PIN'; entered = ''; });
+              }
+            } else {
+              setS(() {});
+            }
+          }
+          void tapDel() => setS(() {
+            error = null;
+            if (entered.isNotEmpty) entered = entered.substring(0, entered.length - 1);
+          });
+
+          return Dialog(
+            backgroundColor: const Color(0xFF0f172a),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lock_outline, color: Colors.white54, size: 36),
+                  const SizedBox(height: 12),
+                  const Text('Enter Admin PIN',
+                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(4, (i) {
+                      final filled = i < entered.length;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10),
+                        width: 16, height: 16,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: filled ? Colors.white : Colors.transparent,
+                          border: Border.all(color: filled ? Colors.white : Colors.white38, width: 2),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedOpacity(
+                    opacity: error != null ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(error ?? ' ',
+                        style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                  ),
+                  const SizedBox(height: 16),
+                  _PinKeypad(onDigit: tapDigit, onDelete: tapDel),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (verified == true && mounted) _showAdminMenu();
+  }
+
+  Future<void> _showAdminMenu() async {
     final isAdmin = _isAdminMode;
-    final leave = await showDialog<bool>(
+    final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isAdmin ? 'Exit admin view?' : 'Exit app?'),
-        content: Text(isAdmin ? 'Return to the setup screen.' : 'Admin only. Do you want to close the app?'),
+        title: const Text('Admin'),
+        content: Text(isAdmin ? 'Exit admin view and return to setup.' : 'Open tablet setup.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -1285,35 +1365,23 @@ class _WebViewScreenState extends State<WebViewScreen>
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(isAdmin ? 'Exit admin view' : 'Exit'),
+            child: const Text('Open Setup'),
           ),
         ],
       ),
     );
-    if (leave == true && mounted) {
-      if (isAdmin) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => SetupScreen(
-              storage: widget.storage,
-              api: widget.api,
-              deviceId: widget.deviceId,
-              returnToWebView: false,
-            ),
+    if (go == true && mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => SetupScreen(
+            storage: widget.storage,
+            api: widget.api,
+            deviceId: widget.deviceId,
+            returnToWebView: false,
           ),
-          (_) => false,
-        );
-      } else {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => BackendResolverScreen(
-              storage: widget.storage,
-              deviceId: widget.deviceId,
-            ),
-          ),
-          (_) => false,
-        );
-      }
+        ),
+        (_) => false,
+      );
     }
   }
 
@@ -1349,7 +1417,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       }
       return;
     }
-    await _showExitDialog();
+    await _showPinDialog();
   }
 
   @override
@@ -1497,6 +1565,64 @@ class _WebViewScreenState extends State<WebViewScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PinKeypad extends StatelessWidget {
+  const _PinKeypad({required this.onDigit, required this.onDelete});
+  final void Function(String) onDigit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [
+      ['1', '2', '3'],
+      ['4', '5', '6'],
+      ['7', '8', '9'],
+      ['', '0', 'del'],
+    ];
+    return Column(
+      children: rows.map((row) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: row.map((key) {
+            if (key.isEmpty) return const SizedBox(width: 72);
+            final isDel = key == 'del';
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Material(
+                color: isDel
+                    ? Colors.red.shade900.withValues(alpha: 0.6)
+                    : Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: isDel ? onDelete : () => onDigit(key),
+                  child: SizedBox(
+                    width: 72,
+                    height: 60,
+                    child: Center(
+                      child: isDel
+                          ? const Icon(Icons.backspace_outlined,
+                              color: Colors.white70, size: 20)
+                          : Text(
+                              key,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w300,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      )).toList(),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import 'services/storage_service.dart';
 import 'screens/backend_resolver_screen.dart';
+import 'screens/pin_setup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,10 +46,9 @@ class TabletMonitorApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
         useMaterial3: true,
       ),
-      home: BackendResolverScreen(
-        storage: storage,
-        deviceId: deviceId,
-      ),
+      home: storage.hasPinSet
+          ? BackendResolverScreen(storage: storage, deviceId: deviceId)
+          : PinSetupScreen(storage: storage, deviceId: deviceId),
     );
   }
 }
