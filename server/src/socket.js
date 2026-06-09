@@ -25,6 +25,8 @@ const lastAppActiveByDeviceId = new Map();
 const tabletInSetupByDeviceId = new Set();
 /** deviceId: tablet registered as Admin View (__ADMIN__). Receives admin_alert commands. */
 const adminTabletDeviceIds = new Set();
+/** deviceId: we already sent a low-battery alert so we don't spam on every heartbeat. Reset when battery recovers. */
+const lowBatteryAlertedByDeviceId = new Set();
 const adminSockets = new Set();
 /** Throttle only heartbeat-driven pushes to avoid flooding when many tablets send heartbeats. */
 const HEARTBEAT_PUSH_THROTTLE_MS = 800;
@@ -443,6 +445,16 @@ function sendCommandToTablet(deviceId, action, payload = null) {
         const newName = (payload && payload.judgeName) ? String(payload.judgeName) : '';
         notifyAdminTablets('judge_assigned', { judgeLetter: newLetter, judgeName: newName });
       }
+    } else if (act === 'edit_judge_setup' || act === 'reset_setup') {
+      log('edit_judge_setup/reset_setup sent to tablet', deviceId);
+      // Notify admin tablets — this action means the judge is being unassigned from this tablet.
+      if (!adminTabletDeviceIds.has(deviceId)) {
+        const t = tabletService.findByDeviceId(deviceId);
+        const jl = t ? (t.judge_letter || '').trim() : '';
+        if (jl && jl !== '__ADMIN__') {
+          notifyAdminTablets('judge_unassigned', { judgeLetter: jl, judgeName: t ? (t.judge_name || '') : '' });
+        }
+      }
     } else log('command sent to tablet', `${deviceId} action=${act}`);
     pushDashboardToAdmin('command_sent');
     return true;
@@ -458,6 +470,7 @@ function onTabletDisconnected(deviceId) {
   lastHeartbeatByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
+  lowBatteryAlertedByDeviceId.delete(deviceId);
   const conn = require('./db/connection');
   const dbTablets = conn.dbTablets || conn;
   const before = dbTablets.prepare('SELECT is_online FROM tablets WHERE device_id = ?').get(deviceId);
@@ -701,6 +714,25 @@ function init(httpServer, sessionMiddleware) {
       }
       broadcastToAdmin('tablet_heartbeat', adminBroadcast);
       pushDashboardToAdmin('heartbeat');
+
+      // Low-battery alert: notify admin tablets once when battery first drops below 20%.
+      // Reset the alert flag when battery recovers above 25% (hysteresis to avoid flapping).
+      if (!adminTabletDeviceIds.has(devId)) {
+        const batt = payload.batteryLevel ?? payload.battery_level;
+        const battNum = batt != null ? parseInt(String(batt), 10) : NaN;
+        const charging = payload.charging === true || payload.charging === 1 || payload.charging === '1';
+        if (!Number.isNaN(battNum)) {
+          if (battNum > 0 && battNum < 20 && !charging && !lowBatteryAlertedByDeviceId.has(devId)) {
+            lowBatteryAlertedByDeviceId.add(devId);
+            const t = tabletService.findByDeviceId(devId);
+            const judgeLetter = t ? (t.judge_letter || '').trim() : '';
+            const judgeName = t ? (t.judge_name || '').trim() : '';
+            notifyAdminTablets('low_battery', { judgeLetter, judgeName, batteryLevel: battNum });
+          } else if ((battNum >= 25 || charging) && lowBatteryAlertedByDeviceId.has(devId)) {
+            lowBatteryAlertedByDeviceId.delete(devId);
+          }
+        }
+      }
     });
 
     socket.on('command_completed', (msg) => {
@@ -728,6 +760,15 @@ function init(httpServer, sessionMiddleware) {
       if (devId && (status === 'LOGGED_IN' || status === 'LOGGED_OUT')) {
         lastLoginStatusByDeviceId.set(devId, status);
         log('loginStatus changed', `device=${devId} status=${status}`);
+        // Notify admin tablets on judge login / logout (skip admin tablets themselves).
+        if (!adminTabletDeviceIds.has(devId)) {
+          const tablet = tabletService.findByDeviceId(devId);
+          const judgeLetter = tablet ? (tablet.judge_letter || '').trim() : '';
+          const judgeName = tablet ? (tablet.judge_name || '').trim() : '';
+          if (judgeLetter && judgeLetter !== '__ADMIN__') {
+            notifyAdminTablets(status === 'LOGGED_IN' ? 'judge_login' : 'judge_logout', { judgeLetter, judgeName });
+          }
+        }
         pushDashboardToAdmin('login_status_changed');
       }
     });

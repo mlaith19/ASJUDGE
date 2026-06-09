@@ -137,7 +137,7 @@ function register(payload) {
   const tabletLabel = sanitizeString(payload.tabletLabel || payload.tablet_label, 200);
 
   let judgeName = '';
-  if (judgeLetter) {
+  if (judgeLetter && judgeLetter !== '__ADMIN__') {
     const judgesService = require('./judgesService');
     const judge = judgesService.getByLetter(judgeLetter);
     if (!judge) throw new Error(`Judge letter "${judgeLetter}" not found. Create the judge in Admin → Judges first.`);
