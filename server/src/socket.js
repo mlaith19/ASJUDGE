@@ -408,6 +408,9 @@ function broadcastToAdmin(event, data) {
  * @param {object} data - extra fields merged into the payload
  */
 function notifyAdminTablets(eventType, data = {}) {
+  // Telegram is always sent regardless of tablet state
+  try { telegramService.notify(eventType, data); } catch (_) {}
+
   if (adminTabletDeviceIds.size === 0) return;
   try {
     const s = settingsService.get();
@@ -419,7 +422,6 @@ function notifyAdminTablets(eventType, data = {}) {
     sendCommandToTablet(deviceId, 'admin_alert', payload);
   });
   log(`admin_alert [${eventType}] sent to ${adminTabletDeviceIds.size} admin tablet(s)`);
-  try { telegramService.notify(eventType, data); } catch (_) {}
 }
 
 function sendCommandToTablet(deviceId, action, payload = null) {
