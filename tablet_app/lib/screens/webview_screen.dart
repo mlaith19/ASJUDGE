@@ -93,7 +93,8 @@ class _WebViewScreenState extends State<WebViewScreen>
     _loadConfigAndWebView();
     // On Android: check permission after build; show dialog if not granted (user tap = system shows permission dialog)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _kioskService.startLockTask();
+      final alreadyPinned = await _kioskService.isLockTaskMode();
+      if (!alreadyPinned) _kioskService.startLockTask();
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       if (!Platform.isAndroid) return;
@@ -1277,14 +1278,56 @@ class _WebViewScreenState extends State<WebViewScreen>
   void _onColorTap() {
     _colorTapTimer?.cancel();
     _colorTapCount++;
-    if (_colorTapCount >= 8) {
+    if (_colorTapCount >= 5) {
       _colorTapCount = 0;
-      _kioskService.stopLockTask();
+      _showKioskMenu();
       return;
     }
     _colorTapTimer = Timer(const Duration(seconds: 3), () {
       _colorTapCount = 0;
     });
+  }
+
+  Future<void> _showKioskMenu() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kiosk'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('unassign'),
+            child: const Text('Unassign'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('unlock'),
+            child: const Text('Unlock'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (result == 'unlock') {
+      await _kioskService.stopLockTask();
+    } else if (result == 'unassign') {
+      await _kioskService.stopLockTask();
+      await widget.storage.clearJudgeSelection();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => SetupScreen(
+            storage: widget.storage,
+            api: widget.api,
+            deviceId: widget.deviceId,
+            returnToWebView: false,
+          ),
+        ),
+        (_) => false,
+      );
+    }
   }
 
   Future<void> _showAdminMenu() async {
