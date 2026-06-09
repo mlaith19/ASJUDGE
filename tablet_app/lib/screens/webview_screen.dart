@@ -63,6 +63,7 @@ class _WebViewScreenState extends State<WebViewScreen>
   Timer? _adminTapTimer;
   int _colorTapCount = 0;
   Timer? _colorTapTimer;
+  Timer? _repinTimer;
   bool _navigatingToSetup = false;
   String _judgeUsername = '';
   String _judgePassword = '';
@@ -114,6 +115,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     _socketService?.dispose();
     _adminTapTimer?.cancel();
     _colorTapTimer?.cancel();
+    _repinTimer?.cancel();
     _kioskService.setKeepScreenOn(false);
     super.dispose();
   }
@@ -1312,7 +1314,12 @@ class _WebViewScreenState extends State<WebViewScreen>
     if (!mounted) return;
     if (result == 'unlock') {
       await _kioskService.stopLockTask();
+      _repinTimer?.cancel();
+      _repinTimer = Timer(const Duration(seconds: 15), () {
+        _kioskService.startLockTask();
+      });
     } else if (result == 'unassign') {
+      _repinTimer?.cancel();
       await _kioskService.stopLockTask();
       await widget.storage.clearJudgeSelection();
       if (!mounted) return;
@@ -1458,34 +1465,8 @@ class _WebViewScreenState extends State<WebViewScreen>
         body: Stack(
           children: [
             if (_currentTargetUrl != null && _controller != null)
-              Stack(
-                children: [
-                  Positioned.fill(
-                    child: WebViewWidget(controller: _controller!),
-                  ),
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    width: 80,
-                    height: 80,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _onAdminTap,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    width: 39,
-                    height: 39,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _onColorTap,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ],
+              Positioned.fill(
+                child: WebViewWidget(controller: _controller!),
               )
             else
               const Center(child: CircularProgressIndicator()),
@@ -1501,6 +1482,28 @@ class _WebViewScreenState extends State<WebViewScreen>
                 ),
               ),
             if (_locationPermissionGranted != true) _buildPermissionBanner(context),
+            Positioned(
+              top: 0,
+              left: 0,
+              width: 80,
+              height: 80,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _onAdminTap,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              width: 39,
+              height: 39,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _onColorTap,
+                child: const SizedBox.expand(),
+              ),
+            ),
           ],
         ),
       ),
