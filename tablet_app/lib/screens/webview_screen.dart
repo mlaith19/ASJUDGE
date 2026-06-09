@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:vibration/vibration.dart';
@@ -77,7 +77,6 @@ class _WebViewScreenState extends State<WebViewScreen>
   /// So we show the permission dialog only once per session.
   bool _permissionDialogShown = false;
   bool _adminAlertsEnabled = true;
-  AudioPlayer? _alertPlayer;
 
   static const String _logTag = 'WebView';
   static const Duration _postAssignWaitBeforeConnect = Duration(milliseconds: 2500);
@@ -111,7 +110,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _heartbeatPayloadTimer?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
-    _alertPlayer?.dispose();
     _kioskService.setKeepScreenOn(false);
     super.dispose();
   }
@@ -335,16 +333,50 @@ class _WebViewScreenState extends State<WebViewScreen>
   }
 
   void _onAdminCommand(String action, dynamic payload) {
-    if (action == 'admin_alert' && _adminAlertsEnabled) {
+    _log('admin_command received: action=$action enabled=$_adminAlertsEnabled payload=$payload');
+    if (action != 'admin_alert') return;
+
+    // Always show visual notification so we can confirm the command arrived.
+    if (mounted) {
+      String label = 'Alert';
+      if (payload is Map) {
+        final eventType = (payload['eventType'] ?? '').toString();
+        final judge = (payload['judgeLetter'] ?? '').toString();
+        final batt = (payload['batteryLevel'] ?? '').toString();
+        switch (eventType) {
+          case 'judge_online':    label = 'Judge $judge connected'; break;
+          case 'judge_offline':   label = 'Judge $judge disconnected'; break;
+          case 'judge_assigned':  label = 'Judge $judge assigned'; break;
+          case 'judge_unassigned':label = 'Judge $judge unassigned'; break;
+          case 'judge_login':     label = 'Judge $judge logged in'; break;
+          case 'judge_logout':    label = 'Judge $judge logged out'; break;
+          case 'low_battery':     label = 'Judge $judge battery $batt%'; break;
+          default: label = eventType.isNotEmpty ? eventType : 'Admin alert';
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(children: [
+            const Icon(Icons.notifications_active, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(color: Colors.white)),
+          ]),
+          backgroundColor: Colors.indigo.shade700,
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    if (_adminAlertsEnabled) {
       _triggerAdminAlert();
     }
   }
 
   Future<void> _triggerAdminAlert() async {
-    // Vibration
     try {
-      final hasVibrator = await Vibration.hasVibrator();
-      if (hasVibrator) {
+      final bool? hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator == true) {
         Vibration.vibrate(pattern: [0, 300, 100, 200, 100, 400]);
       } else {
         HapticFeedback.heavyImpact();
@@ -352,11 +384,8 @@ class _WebViewScreenState extends State<WebViewScreen>
     } catch (_) {
       try { HapticFeedback.heavyImpact(); } catch (_) {}
     }
-    // Sound: play the device's default notification sound
     try {
-      _alertPlayer ??= AudioPlayer();
-      await _alertPlayer!.stop();
-      await _alertPlayer!.play(UrlSource('content://settings/system/notification_sound'));
+      await FlutterRingtonePlayer().playNotification();
     } catch (e) {
       _log('admin alert sound error: $e');
     }
