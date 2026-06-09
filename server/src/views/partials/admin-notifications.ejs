@@ -1,0 +1,19 @@
+<script>
+(function() {
+  function init() {
+    if (typeof io === 'undefined') return;
+    if (!('Notification' in window)) return;
+    var socket = window.adminSocket || io('/admin', { path: '/socket.io' });
+    if (!window.adminSocket) window.adminSocket = socket;
+    if (document.visibilityState === 'visible' && Notification.permission === 'default') Notification.requestPermission();
+    document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible' && Notification.permission === 'default') Notification.requestPermission(); });
+    socket.on('admin_notification', function(data) {
+      var title = (data && data.title) ? data.title : 'A.S JUDGE';
+      var body = (data && data.body) ? data.body : '';
+      if (Notification.permission === 'granted') new Notification(title, { body: body, icon: '/logo.png' });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>

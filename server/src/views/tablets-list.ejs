@@ -1,0 +1,47 @@
+<%- include('layouts/main', { body: `
+<div class="page-header">
+  <h1>All Tablets</h1>
+  <p class="text-muted">${tablets.length} tablet(s) registered</p>
+</div>
+` + (tablets.length === 0 ? `
+<div class="empty-state">
+  <div class="empty-icon">&#128241;</div>
+  <h3>No tablets registered yet</h3>
+  <p>Tablets will appear here after they register with the server.</p>
+</div>
+` : `
+<div class="tablets-grid">` +
+  tablets.map(t => `
+  <div class="tablet-card ${t.is_online ? 'card-online' : 'card-offline'}">
+    <div class="tablet-card-header">
+      <span class="badge ${t.is_online ? 'badge-online' : 'badge-offline'}">
+        ${t.is_online ? 'ONLINE' : 'OFFLINE'}
+      </span>
+      <span class="tablet-card-time">${timeAgo(t.last_seen_at)}</span>
+    </div>
+    <h3 class="tablet-card-name">${t.judge_name || 'Unnamed'}</h3>
+    <p class="tablet-card-label">${t.tablet_label || '—'}</p>
+    <div class="tablet-card-details">
+      <div class="detail-row">
+        <span class="detail-label">Device:</span>
+        <span class="detail-value" title="${t.device_id}">${t.device_id ? t.device_id.substring(0, 16) : '—'}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Battery:</span>
+        <span class="detail-value">
+          ${t.battery_level !== null ? `
+            <span class="${t.battery_level <= 20 ? 'text-danger' : t.charging ? 'text-info' : ''}">
+              ${t.battery_level}%${t.charging ? ' &#9889;' : ''}
+            </span>
+          ` : '—'}
+        </span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">IP:</span>
+        <span class="detail-value">${t.ip_address || '—'}</span>
+      </div>
+    </div>
+    <a href="/admin/tablets/${t.id}" class="btn btn-sm btn-primary btn-block">View Details</a>
+  </div>`).join('') +
+`</div>
+`)) %>

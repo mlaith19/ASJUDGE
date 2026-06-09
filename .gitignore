@@ -1,0 +1,42 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Server data / DB
+server/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+server_err.txt
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Flutter/Dart build
+tablet_app/build/
+tablet_app/.dart_tool/
+tablet_app/.flutter-plugins
+tablet_app/.flutter-plugins-dependencies
+tablet_app/.packages
+tablet_app/android/.gradle/
+tablet_app/android/app/debug/
+tablet_app/android/app/release/
+tablet_app/android/app/profile/
+tablet_app/android/local.properties
+tablet_app/android/key.properties
+*.keystore
+*.jks
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Claude
+.claude/

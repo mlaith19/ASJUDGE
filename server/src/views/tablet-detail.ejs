@@ -1,0 +1,125 @@
+<%- include('layouts/main', { body: `
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1>${tablet.judge_name || 'Unnamed Tablet'}</h1>
+      <p class="text-muted">Device: ${tablet.device_id}</p>
+    </div>
+    <span class="badge badge-lg ${tablet.is_online ? 'badge-online' : 'badge-offline'}">
+      ${tablet.is_online ? 'ONLINE' : 'OFFLINE'}
+    </span>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-section">
+    <h2>Device Status</h2>
+    <div class="info-grid">
+      <div class="info-item">
+        <span class="info-label">Battery</span>
+        <span class="info-value ${tablet.battery_level !== null && tablet.battery_level <= 20 ? 'text-danger' : ''}">
+          ${tablet.battery_level !== null ? tablet.battery_level + '%' : '—'}
+          ${tablet.charging ? ' &#9889; Charging' : ''}
+        </span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Temperature</span>
+        <span class="info-value">${tablet.battery_temperature !== null ? tablet.battery_temperature.toFixed(1) + '°C' : '—'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">IP Address</span>
+        <span class="info-value">${tablet.ip_address || '—'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">App Version</span>
+        <span class="info-value">${tablet.app_version || '—'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Last Seen</span>
+        <span class="info-value">${timeAgo(tablet.last_seen_at)}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Current URL</span>
+        <span class="info-value info-url" title="${tablet.current_webview_url || ''}">${tablet.current_webview_url || '—'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Effective Target URL</span>
+        <span class="info-value info-url" title="${effectiveUrl}">${effectiveUrl}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Global Default URL</span>
+        <span class="info-value info-url">${settings.global_webview_url}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <h2>Edit Tablet</h2>
+    <form method="POST" action="/admin/tablets/${tablet.id}/update" class="edit-form">
+      <div class="form-group">
+        <label for="judge_name">Judge Name</label>
+        <input type="text" id="judge_name" name="judge_name"
+               value="${tablet.judge_name || ''}" class="form-input"
+               placeholder="Enter judge name">
+      </div>
+      <div class="form-group">
+        <label for="tablet_label">Tablet Label</label>
+        <input type="text" id="tablet_label" name="tablet_label"
+               value="${tablet.tablet_label || ''}" class="form-input"
+               placeholder="e.g. Table 1, Station A">
+      </div>
+      <div class="form-group">
+        <label for="custom_webview_url">Custom WebView URL</label>
+        <input type="url" id="custom_webview_url" name="custom_webview_url"
+               value="${tablet.custom_webview_url || ''}" class="form-input"
+               placeholder="Leave empty to use global default">
+        <small class="form-help">Leave empty to use the global default URL (${settings.global_webview_url})</small>
+      </div>
+      <div class="form-group">
+        <label for="note">Internal Note</label>
+        <textarea id="note" name="note" rows="3" class="form-input"
+                  placeholder="Optional internal note">${tablet.note || ''}</textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+  </div>
+</div>
+
+<div class="detail-section" style="margin-top: 1.5rem;">
+  <h2>Actions</h2>
+  <div class="action-buttons">
+    <form method="POST" action="/admin/tablets/${tablet.id}/force-reload" style="display:inline">
+      <button type="submit" class="btn btn-warning"
+              onclick="return confirm('Force reload WebView on this tablet?')">
+        Force Reload WebView
+      </button>
+    </form>
+    <a href="/admin/tablets" class="btn btn-outline">Back to Tablets</a>
+  </div>
+</div>
+
+${logs.length > 0 ? `
+<div class="detail-section" style="margin-top: 1.5rem;">
+  <h2>Recent Logs</h2>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Event</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${logs.map(l => `
+        <tr>
+          <td>${l.created_at}</td>
+          <td><span class="badge badge-info">${l.event_type}</span></td>
+          <td class="td-url">${l.payload_json}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>
+` : ''}
+`}) %>

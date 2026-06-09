@@ -1,0 +1,94 @@
+<%- include('layouts/main', { body: `
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p class="text-muted">Monitor all connected tablets</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">${stats.total}</div>
+    <div class="stat-label">Total Tablets</div>
+  </div>
+  <div class="stat-card stat-online">
+    <div class="stat-value">${stats.online}</div>
+    <div class="stat-label">Online</div>
+  </div>
+  <div class="stat-card stat-offline">
+    <div class="stat-value">${stats.offline}</div>
+    <div class="stat-label">Offline</div>
+  </div>
+  <div class="stat-card stat-battery">
+    <div class="stat-value">${stats.lowBattery}</div>
+    <div class="stat-label">Low Battery</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <form method="GET" action="/admin/dashboard" class="filter-form">
+    <input type="text" name="q" placeholder="Search judge name, device ID..."
+           value="${filters.q || ''}" class="form-input filter-input">
+    <select name="status" class="form-input filter-select">
+      <option value="">All Status</option>
+      <option value="online" ${filters.status === 'online' ? 'selected' : ''}>Online</option>
+      <option value="offline" ${filters.status === 'offline' ? 'selected' : ''}>Offline</option>
+    </select>
+    <label class="filter-checkbox">
+      <input type="checkbox" name="low_battery" value="1"
+             ${filters.low_battery === '1' ? 'checked' : ''}>
+      Low Battery
+    </label>
+    <button type="submit" class="btn btn-secondary">Filter</button>
+    <a href="/admin/dashboard" class="btn btn-outline">Clear</a>
+  </form>
+</div>
+` + (tablets.length === 0 ? `
+<div class="empty-state">
+  <div class="empty-icon">&#128241;</div>
+  <h3>No tablets found</h3>
+  <p>Tablets will appear here once they connect to the server.</p>
+</div>
+` : `
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Judge Name</th>
+        <th>Label</th>
+        <th>Device ID</th>
+        <th>Battery</th>
+        <th>Temp</th>
+        <th>IP</th>
+        <th>Current URL</th>
+        <th>Last Seen</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>` +
+      tablets.map(t => `
+      <tr class="${t.is_online ? '' : 'row-offline'}">
+        <td>
+          <span class="badge ${t.is_online ? 'badge-online' : 'badge-offline'}">
+            ${t.is_online ? 'ONLINE' : 'OFFLINE'}
+          </span>
+        </td>
+        <td class="td-name">${t.judge_name || '—'}</td>
+        <td>${t.tablet_label || '—'}</td>
+        <td class="td-device-id" title="${t.device_id}">${t.device_id ? t.device_id.substring(0, 12) + '...' : '—'}</td>
+        <td>
+          ${t.battery_level !== null ? `
+            <span class="battery ${t.battery_level <= 20 ? 'battery-low' : t.charging ? 'battery-charging' : ''}">
+              ${t.battery_level}%${t.charging ? ' &#9889;' : ''}
+            </span>
+          ` : '—'}
+        </td>
+        <td>${t.battery_temperature !== null ? t.battery_temperature.toFixed(1) + '°C' : '—'}</td>
+        <td class="td-ip">${t.ip_address || '—'}</td>
+        <td class="td-url" title="${t.current_webview_url || ''}">${t.current_webview_url ? t.current_webview_url.substring(0, 30) + '...' : '—'}</td>
+        <td>${timeAgo(t.last_seen_at)}</td>
+        <td><a href="/admin/tablets/${t.id}" class="btn btn-sm btn-primary">Details</a></td>
+      </tr>`).join('') +
+    `</tbody>
+  </table>
+</div>
+`)) %>

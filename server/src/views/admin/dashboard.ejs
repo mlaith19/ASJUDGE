@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'dashboard', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content">
+    <% const s = typeof stats !== 'undefined' ? stats : { total: 0, online: 0, offline: 0, lowBattery: 0, wrongNetwork: 0 }; %>
+
+    <div class="overview-section" id="overview-section">
+      <div class="overview-header" onclick="toggleOverview()">
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+          <span class="overview-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            System Overview
+          </span>
+          <div class="overview-mini">
+            <span class="mini-stat"><span id="mini-total" style="color:var(--text-primary);font-weight:700"><%= s.total %></span>&nbsp;<span style="color:var(--text-muted)">total</span></span>
+            <span class="mini-dot">·</span>
+            <span class="mini-stat"><span id="mini-online" style="color:var(--accent-emerald);font-weight:700"><%= s.online %></span>&nbsp;<span style="color:var(--text-muted)">online</span></span>
+            <span class="mini-dot">·</span>
+            <span class="mini-stat"><span id="mini-offline" style="color:var(--accent-red);font-weight:700"><%= s.offline %></span>&nbsp;<span style="color:var(--text-muted)">offline</span></span>
+            <% if (s.lowBattery > 0) { %><span class="mini-dot">·</span><span class="mini-stat"><span id="mini-lowbat" style="color:var(--accent-amber);font-weight:700"><%= s.lowBattery %></span>&nbsp;<span style="color:var(--text-muted)">low bat</span></span><% } else { %><span id="mini-lowbat-wrap" style="display:none"><span class="mini-dot">·</span><span class="mini-stat"><span id="mini-lowbat" style="color:var(--accent-amber);font-weight:700">0</span>&nbsp;<span style="color:var(--text-muted)">low bat</span></span></span><% } %>
+          </div>
+        </div>
+        <button type="button" class="overview-toggle-btn" onclick="event.stopPropagation();toggleOverview()">
+          <span id="overview-toggle-label">Hide</span>
+          <svg class="overview-toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+        </button>
+      </div>
+      <div class="overview-body">
+        <p class="updated" style="margin-bottom:0.75rem;">Columns = judge tablets (by letter). Rows = data fields. <span id="dashboard-last-updated">Last updated: <%= new Date().toLocaleString() %></span></p>
+        <div class="stats-grid" id="dashboard-summary-cards">
+          <div class="stat-card">
+            <div class="stat-icon purple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></div>
+            <div><div class="stat-value"><%= s.total %></div><div class="stat-label">Total Tablets</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon emerald"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg></div>
+            <div><div class="stat-value"><%= s.online %></div><div class="stat-label">Online</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path></svg></div>
+            <div><div class="stat-value"><%= s.offline %></div><div class="stat-label">Offline</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line></svg></div>
+            <div><div class="stat-value"><%= s.lowBattery %></div><div class="stat-label">Low Battery</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>
+            <div><div class="stat-value"><%= s.wrongNetwork %></div><div class="stat-label">Wrong Network</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="dashboard-table-wrap">
+    <% if (typeof columns === 'undefined' || columns.length === 0) { %>
+      <div class="card empty glass-card">No judges defined. Add judges in <a href="/admin/judges">Judges</a>, then tablets can select a judge letter.</div>
+    <% } else {
+      const set = typeof settings !== 'undefined' ? settings : {};
+      function shortUrl(u) { if (!u) return '—'; var s = u.replace(/^https?:\/\//, ''); return s.length > 45 ? s.substring(0, 42) + '…' : s; }
+      const getHexFn = typeof getHex === 'function' ? getHex : function() { return null; };
+    %>
+    <div class="data-grid">
+      <div class="data-sidebar" id="sidebar">
+        <div style="position: relative;">
+          <button class="sidebar-toggle" onclick="toggleSidebar()" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="toggle-icon"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+        </div>
+        <div class="sidebar-row tall"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg><span class="sidebar-label">Field</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span class="sidebar-label">Status</span></div>
+        <div class="sidebar-row login-status-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg><span class="sidebar-label">LOGIN STATUS</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg><span class="sidebar-label">Tablet ID</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line></svg><span class="sidebar-label">Battery</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg><span class="sidebar-label">Temperature</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span class="sidebar-label">Charging</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span class="sidebar-label">WiFi Name</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg><span class="sidebar-label">Internal IP</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg><span class="sidebar-label">Current URL</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg><span class="sidebar-label">Target URL</span></div>
+        <div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span class="sidebar-label">Last Seen</span></div>
+        <div class="sidebar-row actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4"></path></svg><span class="sidebar-label">Actions</span></div>
+      </div>
+      <div class="data-columns">
+        <% columns.forEach(function(col) { const j = col.judge; const t = col.tablet; const online = !!j.online; const hex = (j.judge_color_hex) || '#6b7280'; const lowBattery = online && t && t.battery_level != null && t.battery_level < 20; const mediumBattery = online && t && t.battery_level != null && t.battery_level >= 20 && t.battery_level < 50; const batteryClass = lowBattery ? 'low' : (mediumBattery ? 'medium' : 'high'); const targetUrl = t && (t.custom_webview_url && t.custom_webview_url.trim()) ? t.custom_webview_url : (settings.global_webview_url || ''); const urlMismatch = online && (t ? (t.current_webview_url || '').trim() : '') && targetUrl && (t ? (t.current_webview_url || '').trim() : '') !== targetUrl.trim(); %>
+        <div class="data-column">
+          <div class="data-cell tall judge-header-cell">
+            <% const hasAssignedJudge = t && (t.judge_letter || '').toString().trim(); %>
+            <div class="judge-header-main">
+              <% if (hasAssignedJudge) { %>
+              <div class="judge-letter" style="background: <%= hex %>;"><%= (t.judge_letter || j.judge_letter || '').toString().toUpperCase() || '—' %></div>
+              <span class="judge-name"><%= (t.judge_name || j.judge_name || '').trim() || '—' %></span>
+              <% } else { %>
+              <div class="judge-letter judge-letter-placeholder">—</div>
+              <span class="judge-name text-muted" style="font-size: 0.7rem;"><%= t ? 'Assign judge' : ((j.judge_letter || '').toUpperCase() || '—') %></span>
+              <% } %>
+            </div>
+            <% if (t && online) { %>
+            <div class="judge-assign-top">
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="force_judge_assignment"><input type="hidden" name="redirect" value="/admin/dashboard"><select name="judge_letter" required class="judge-assign-select"><% columns.forEach(function(c){ %><% if ((c.judge.judge_letter || '') !== '—') { %><option value="<%= c.judge.judge_letter %>"<%= (c.judge.judge_letter === (t.judge_letter || j.judge_letter)) ? ' selected' : '' %>><%= c.judge.judge_letter %></option><% } %><% }); %></select><button type="submit" class="action-btn judge-assign-btn">Assign</button></form>
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="edit_judge_setup"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn judge-assign-btn judge-unassign-btn">UNASSIGN</button></form>
+            </div>
+            <% } else if (t) { %>
+            <span class="text-muted" style="font-size: 0.7rem;">OFFLINE</span>
+            <% } else { %>
+            <span class="text-muted" style="font-size: 0.7rem;">—</span>
+            <% } %>
+          </div>
+          <div class="data-cell">
+            <span class="badge <%= j.online ? 'badge-online' : 'badge-offline' %>"><% if (j.online) { %><span class="badge-dot pulse"></span><% } %><%= j.online ? 'ONLINE' : 'OFFLINE' %></span>
+          </div>
+          <div class="data-cell data-cell-login">
+            <% if (!online || !t) { %><span class="text-muted" style="font-size: 0.625rem;">—</span>
+            <% } else if (t.loginStatus === 'LOGGED_IN' || t.loginStatus === 'LOGGED_OUT') { %><span class="badge <%= t.loginStatus === 'LOGGED_IN' ? 'badge-online' : 'badge-offline' %>" style="font-size: 0.625rem; padding: 0.25rem 0.5rem;"><%= t.loginStatus %></span><span class="login-toggle-wrap"><% if (t.loginStatus === 'LOGGED_IN') { %><form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="logout_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="login-toggle logout">LOGOUT</button></form><% } else { %><form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="login_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="login-toggle login">LOGIN</button></form><% } %></span>
+            <% } else { %><span class="text-muted" style="font-size: 0.625rem;">—</span><% } %>
+          </div>
+          <div class="data-cell font-mono" style="font-size: 0.625rem;"><%= t ? (t.device_id || '—') : '—' %></div>
+          <div class="data-cell"><% if (online && t && t.battery_level != null) { %><div class="flex items-center gap-2"><div class="progress-bar"><div class="progress-fill <%= batteryClass %>" style="width: <%= t.battery_level %>%;"></div></div><span class="<%= lowBattery ? 'text-amber' : 'text-emerald' %>" style="font-size: 0.625rem; font-weight: 600;"><%= t.battery_level %>%</span></div><% } else { %>—<% } %></div>
+          <div class="data-cell <%= online && t && t.battery_temperature != null && t.battery_temperature >= 40 ? 'text-amber' : 'text-muted' %>" style="font-size: 0.75rem;"><%= online && t && t.battery_temperature != null ? (Math.round(Number(t.battery_temperature) * 10) / 10) + '°C' : '—' %></div>
+          <div class="data-cell"><% if (online && t && t.charging) { %><span class="badge badge-charging" style="font-size: 0.625rem; padding: 0.25rem 0.5rem;">Yes</span><% } else { %><span class="text-muted" style="font-size: 0.75rem;">—</span><% } %></div>
+          <div class="data-cell" style="font-size: 0.75rem;"><%= online && t ? (t.wifi_ssid || '—') : '—' %></div>
+          <div class="data-cell font-mono text-muted" style="font-size: 0.625rem;"><%= online && t ? (t.ip_address || '—') : '—' %></div>
+          <div class="data-cell text-muted" style="font-size: 0.625rem;"><%= online && t ? shortUrl(t.current_webview_url) : '—' %></div>
+          <div class="data-cell <%= urlMismatch ? 'url-mismatch' : '' %>" style="font-size: 0.625rem;" title="<%= targetUrl %>"><%= targetUrl ? shortUrl(targetUrl) : '—' %></div>
+          <div class="data-cell text-muted" style="font-size: 0.625rem;"><%= t && t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '—' %></div>
+          <div class="data-cell actions">
+            <% if (t) { %>
+            <div class="action-buttons">
+              <a href="/admin/tablets/<%= t.id %>" class="action-btn">Details</a>
+              <a href="/admin/tablets/<%= t.id %>" class="action-btn">Edit</a>
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;" class="assign-judge-form"><input type="hidden" name="action" value="force_judge_assignment"><input type="hidden" name="redirect" value="/admin/dashboard"><select name="judge_letter" required style="font-size:0.625rem;padding:0.2rem 0.4rem;background:var(--bg-glass);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);"><% columns.forEach(function(c){ %><% if ((c.judge.judge_letter || '') !== '—') { %><option value="<%= c.judge.judge_letter %>"><%= c.judge.judge_letter %></option><% } %><% }); %></select><button type="submit" class="action-btn">Assign</button></form>
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="reload_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn">Reload</button></form>
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="clear_session"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn danger">Clear</button></form>
+              <form method="post" action="/admin/tablets/<%= t.id %>/pending-action" style="display:inline;"><input type="hidden" name="action" value="edit_judge_setup"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn judge-unassign-btn">UNASSIGN</button></form>
+            </div>
+            <% } else { %>—<% } %>
+          </div>
+        </div>
+        <% }); %>
+      </div>
+    </div>
+    <% } %>
+    </div>
+  </main>
+  <div id="toast-container" class="toast-container"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+(function() {
+  var socket = io('/admin', { path: '/socket.io' });
+  window.adminSocket = socket;
+  var _prevColMap = null; // tracks prev dashboard state for diff-based notifications
+
+  function showToast(message, type, duration) {
+    var c = document.getElementById('toast-container');
+    if (!c) return;
+    var t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    var dot = document.createElement('span'); dot.className = 'toast-dot';
+    var txt = document.createElement('span'); txt.textContent = message;
+    t.appendChild(dot); t.appendChild(txt);
+    c.appendChild(t);
+    requestAnimationFrame(function() { requestAnimationFrame(function() { t.classList.add('show'); }); });
+    setTimeout(function() {
+      t.classList.remove('show');
+      setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
+    }, duration || 4500);
+  }
+  window.showToast = showToast;
+  function shortUrl(u) { if (!u) return '—'; var s = u.replace(/^https?:\/\//, ''); return s.length > 45 ? s.substring(0, 42) + '…' : s; }
+  function renderSummary(stats) {
+    var s = stats || {};
+    var el = document.getElementById('dashboard-summary-cards');
+    if (!el) return;
+    el.innerHTML = '<div class="stat-card"><div class="stat-icon purple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></div><div><div class="stat-value">' + (s.total || 0) + '</div><div class="stat-label">Total Tablets</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon emerald"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg></div><div><div class="stat-value">' + (s.online || 0) + '</div><div class="stat-label">Online</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path></svg></div><div><div class="stat-value">' + (s.offline || 0) + '</div><div class="stat-label">Offline</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line></svg></div><div><div class="stat-value">' + (s.lowBattery || 0) + '</div><div class="stat-label">Low Battery</div></div></div>' +
+      '<div class="stat-card"><div class="stat-icon orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div><div><div class="stat-value">' + (s.wrongNetwork || 0) + '</div><div class="stat-label">Wrong Network</div></div></div>';
+    // update mini summary (shown when overview is collapsed)
+    var setText = function(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+    setText('mini-total', s.total || 0);
+    setText('mini-online', s.online || 0);
+    setText('mini-offline', s.offline || 0);
+    setText('mini-lowbat', s.lowBattery || 0);
+    var lbWrap = document.getElementById('mini-lowbat-wrap');
+    if (lbWrap) lbWrap.style.display = (s.lowBattery > 0) ? 'inline-flex' : 'none';
+  }
+  function renderTable(state) {
+    var wrap = document.getElementById('dashboard-table-wrap');
+    if (!wrap) return;
+    var columns = (state && state.columns) || [];
+    var settings = (state && state.settings) || {};
+    if (columns.length === 0) {
+      wrap.innerHTML = '<div class="card empty glass-card">No judges defined. Add judges in <a href="/admin/judges">Judges</a>, then tablets can select a judge letter.</div>';
+      return;
+    }
+    var sidebarHtml = '<div class="data-sidebar" id="sidebar"><div style="position:relative"><button class="sidebar-toggle" type="button" onclick="toggleSidebar()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="toggle-icon"><polyline points="15 18 9 12 15 6"></polyline></svg></button></div><div class="sidebar-row tall"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg><span class="sidebar-label">Field</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span class="sidebar-label">Status</span></div><div class="sidebar-row login-status-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg><span class="sidebar-label">LOGIN STATUS</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg><span class="sidebar-label">Tablet ID</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line></svg><span class="sidebar-label">Battery</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg><span class="sidebar-label">Temperature</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span class="sidebar-label">Charging</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg><span class="sidebar-label">WiFi Name</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg><span class="sidebar-label">Internal IP</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg><span class="sidebar-label">Current URL</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg><span class="sidebar-label">Target URL</span></div><div class="sidebar-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span class="sidebar-label">Last Seen</span></div><div class="sidebar-row actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4"></path></svg><span class="sidebar-label">Actions</span></div></div>';
+    var colsHtml = '<div class="data-columns">';
+    columns.forEach(function(col) {
+      var j = col.judge || {};
+      var t = col.tablet;
+      var online = !!j.online;
+      var hex = j.judge_color_hex || '#6b7280';
+      var lowBattery = online && t && t.battery_level != null && t.battery_level < 20;
+      var mediumBattery = online && t && t.battery_level != null && t.battery_level >= 20 && t.battery_level < 50;
+      var batteryClass = lowBattery ? 'low' : (mediumBattery ? 'medium' : 'high');
+      var target = t && t.custom_webview_url && t.custom_webview_url.trim() ? t.custom_webview_url : (settings.global_webview_url || '');
+      var cur = online && t ? (t.current_webview_url || '').trim() : '';
+      var urlMismatch = cur && target && cur !== target;
+      var hasAssignedJudge = t && (t.judge_letter || '').toString().trim();
+      var letterForSelect = (t && t.judge_letter) ? (t.judge_letter || '').toString().trim() : (j.judge_letter || '').toString().trim();
+      var assignOptsTop = '';
+      columns.forEach(function(c) { var L = c.judge && c.judge.judge_letter ? c.judge.judge_letter : ''; if (L && L !== '—') assignOptsTop += '<option value="' + L + '"' + (L === letterForSelect ? ' selected' : '') + '>' + L + '</option>'; });
+      var tallCell = '<div class="data-cell tall judge-header-cell"><div class="judge-header-main">';
+      if (hasAssignedJudge) {
+        tallCell += '<div class="judge-letter" style="background:' + hex + '">' + ((t.judge_letter || j.judge_letter || '').toString().toUpperCase() || '—') + '</div><span class="judge-name">' + ((t.judge_name || j.judge_name || '').toString().trim() || '—') + '</span></div>';
+      } else {
+        tallCell += '<div class="judge-letter judge-letter-placeholder">—</div><span class="judge-name text-muted" style="font-size:0.7rem">' + (t ? 'Assign judge' : ((j.judge_letter || '').toUpperCase() || '—')) + '</span></div>';
+      }
+      if (t && online) {
+        tallCell += '<div class="judge-assign-top">';
+        if (hasAssignedJudge) {
+          tallCell += '<form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="edit_judge_setup"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn judge-assign-btn judge-unassign-btn">UNASSIGN</button></form>';
+        } else {
+          tallCell += '<form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="force_judge_assignment"><input type="hidden" name="redirect" value="/admin/dashboard"><select name="judge_letter" required class="judge-assign-select">' + assignOptsTop + '</select><button type="submit" class="action-btn judge-assign-btn" style="background:var(--accent-emerald,#10b981);border-color:var(--accent-emerald,#10b981);color:#fff">ASSIGN</button></form>';
+        }
+        tallCell += '</div>';
+      } else if (t) tallCell += '<span class="text-muted" style="font-size:0.7rem">OFFLINE</span>';
+      else tallCell += '<span class="text-muted" style="font-size:0.7rem">—</span>';
+      tallCell += '</div>';
+      colsHtml += '<div class="data-column">' + tallCell;
+      colsHtml += '<div class="data-cell"><span class="badge ' + (j.online ? 'badge-online' : 'badge-offline') + '">' + (j.online ? '<span class="badge-dot pulse"></span>' : '') + (j.online ? 'ONLINE' : 'OFFLINE') + '</span></div>';
+      var loginCell = '<span class="text-muted" style="font-size:0.625rem">—</span>';
+      if (online && t) {
+        var loginStatus = (t.loginStatus === 'LOGGED_IN' || t.loginStatus === 'LOGGED_OUT') ? t.loginStatus : null;
+        if (loginStatus === 'LOGGED_IN') {
+          loginCell = '<form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="logout_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="login-toggle logout">LOGOUT</button></form>';
+        } else if (loginStatus === 'LOGGED_OUT') {
+          loginCell = '<form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="login_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="login-toggle login" style="background:var(--accent-emerald,#10b981);border-color:var(--accent-emerald,#10b981)">LOGIN</button></form>';
+        }
+      }
+      colsHtml += '<div class="data-cell data-cell-login">' + loginCell + '</div>';
+      colsHtml += '<div class="data-cell font-mono" style="font-size:0.625rem">' + (t ? (t.device_id || '—') : '—') + '</div>';
+      colsHtml += '<div class="data-cell">' + (online && t && t.battery_level != null ? '<div class="flex items-center gap-2"><div class="progress-bar"><div class="progress-fill ' + batteryClass + '" style="width:' + t.battery_level + '%"></div></div><span class="' + (lowBattery ? 'text-amber' : 'text-emerald') + '" style="font-size:0.625rem;font-weight:600">' + t.battery_level + '%</span></div>' : '—') + '</div>';
+      colsHtml += '<div class="data-cell text-muted" style="font-size:0.75rem">' + (online && t && t.battery_temperature != null ? (Math.round(Number(t.battery_temperature) * 10) / 10) + '°C' : '—') + '</div>';
+      colsHtml += '<div class="data-cell">' + (online && t && t.charging ? '<span class="badge badge-charging" style="font-size:0.625rem;padding:0.25rem 0.5rem">Yes</span>' : '<span class="text-muted" style="font-size:0.75rem">—</span>') + '</div>';
+      colsHtml += '<div class="data-cell" style="font-size:0.75rem">' + (online && t ? (t.wifi_ssid || '—') : '—') + '</div>';
+      colsHtml += '<div class="data-cell font-mono text-muted" style="font-size:0.625rem">' + (online && t ? (t.ip_address || '—') : '—') + '</div>';
+      colsHtml += '<div class="data-cell text-muted" style="font-size:0.625rem">' + (online && t ? shortUrl(t.current_webview_url) : '—') + '</div>';
+      colsHtml += '<div class="data-cell ' + (urlMismatch ? 'url-mismatch' : '') + '" style="font-size:0.625rem" title="' + (target || '') + '">' + (target ? shortUrl(target) : '—') + '</div>';
+      colsHtml += '<div class="data-cell text-muted" style="font-size:0.625rem">' + (t && t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '—') + '</div>';
+      colsHtml += '<div class="data-cell actions">';
+      if (t) {
+        var assignOpts = '';
+        columns.forEach(function(c) { var L = c.judge && c.judge.judge_letter ? c.judge.judge_letter : ''; if (L && L !== '—') assignOpts += '<option value="' + L + '">' + L + '</option>'; });
+        colsHtml += '<div class="action-buttons"><a href="/admin/tablets/' + t.id + '" class="action-btn">Details</a><a href="/admin/tablets/' + t.id + '" class="action-btn">Edit</a><form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline" class="assign-judge-form"><input type="hidden" name="action" value="force_judge_assignment"><input type="hidden" name="redirect" value="/admin/dashboard"><select name="judge_letter" required style="font-size:0.625rem;padding:0.2rem 0.4rem;background:var(--bg-glass);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary)">' + assignOpts + '</select><button type="submit" class="action-btn">Assign</button></form><form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="reload_webview"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn">Reload</button></form><form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="clear_session"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn danger">Clear</button></form><form method="post" action="/admin/tablets/' + t.id + '/pending-action" style="display:inline"><input type="hidden" name="action" value="edit_judge_setup"><input type="hidden" name="redirect" value="/admin/dashboard"><button type="submit" class="action-btn judge-unassign-btn">UNASSIGN</button></form></div>';
+      }
+      else colsHtml += '—';
+      colsHtml += '</div></div>';
+    });
+    colsHtml += '</div>';
+    wrap.innerHTML = '<div class="data-grid">' + sidebarHtml + colsHtml + '</div>';
+  }
+  function updateLastUpdated() {
+    var el = document.getElementById('dashboard-last-updated');
+    if (el) el.textContent = 'Last updated: ' + new Date().toLocaleString();
+  }
+  function toggleSidebar() {
+    var sidebar = document.getElementById('sidebar');
+    var icon = document.getElementById('toggle-icon');
+    var labels = document.querySelectorAll('.sidebar-label');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+    if (sidebar.classList.contains('collapsed')) {
+      if (icon) icon.innerHTML = '<polyline points="9 18 15 12 9 6"></polyline>';
+      labels.forEach(function(l) { l.style.display = 'none'; });
+    } else {
+      if (icon) icon.innerHTML = '<polyline points="15 18 9 12 15 6"></polyline>';
+      labels.forEach(function(l) { l.style.display = 'inline'; });
+    }
+  }
+  window.toggleSidebar = toggleSidebar;
+  function toggleOverview() {
+    var sec = document.getElementById('overview-section');
+    var label = document.getElementById('overview-toggle-label');
+    if (!sec) return;
+    var collapsed = sec.classList.toggle('overview-collapsed');
+    if (label) label.textContent = collapsed ? 'Show' : 'Hide';
+    try { localStorage.setItem('asjudge_overview_collapsed', collapsed ? '1' : '0'); } catch(_) {}
+  }
+  window.toggleOverview = toggleOverview;
+  (function restoreOverview() {
+    try {
+      if (localStorage.getItem('asjudge_overview_collapsed') === '1') {
+        var sec = document.getElementById('overview-section');
+        var label = document.getElementById('overview-toggle-label');
+        if (sec) sec.classList.add('overview-collapsed');
+        if (label) label.textContent = 'Show';
+      }
+    } catch(_) {}
+  })();
+  function requestState() { if (socket.connected) socket.emit('request_state'); }
+
+  socket.on('dashboard_state', function(state) {
+    if (!state) return;
+    if (state.stats) renderSummary(state.stats);
+    if (state.columns) {
+      // Build new col map for diff
+      var newMap = {};
+      state.columns.forEach(function(col) {
+        var letter = col.judge && col.judge.judge_letter;
+        if (!letter || letter === '—') return;
+        newMap[letter] = {
+          online: !!(col.judge && col.judge.online),
+          loginStatus: col.tablet ? (col.tablet.loginStatus || null) : null,
+          name: ((col.judge && col.judge.judge_name) || '').trim() || ('Judge ' + letter),
+        };
+      });
+      // Diff: notify on changes (skip first render — just initialise state)
+      if (_prevColMap !== null) {
+        Object.keys(newMap).forEach(function(L) {
+          var n = newMap[L], o = _prevColMap[L];
+          if (!o) return;
+          if (!o.online && n.online)       showToast(n.name + ' — ONLINE', 'success');
+          else if (o.online && !n.online)  showToast(n.name + ' — OFFLINE', 'error');
+          if (o.online && n.online) {
+            if (o.loginStatus !== 'LOGGED_IN' && n.loginStatus === 'LOGGED_IN')
+              showToast(n.name + ' — LOGGED IN', 'info');
+            else if (o.loginStatus === 'LOGGED_IN' && n.loginStatus !== 'LOGGED_IN')
+              showToast(n.name + ' — LOGGED OUT', 'warning');
+          }
+        });
+      }
+      _prevColMap = newMap;
+      renderTable(state);
+    }
+    updateLastUpdated();
+  });
+
+  socket.on('connect', function() { _prevColMap = null; requestState(); });
+  socket.on('disconnect', function() { _prevColMap = null; });
+  socket.on('tablet_heartbeat', function() { requestState(); });
+  socket.on('login_status_changed', function() { requestState(); });
+  socket.on('command_completed', function() { requestState(); });
+  socket.on('tablet_offline', function() { requestState(); });
+  socket.on('tablet_connected', function() { requestState(); });
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') requestState();
+  });
+  requestState();
+  setInterval(requestState, 2000);
+})();
+  </script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'settings', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content" style="max-width: 800px;">
+    <% if (locals.flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+    <% } %>
+    <h1 class="mb-6">Settings</h1>
+    <p class="updated mb-6">Global default WebView URL, polling interval, expected WiFi SSID, and app title / environment label. These apply to all tablets unless a tablet has a custom URL.</p>
+
+    <div class="settings-section">
+      <h3>General &amp; Network</h3>
+      <p>Configure default WebView URL, polling, online timeout, and expected WiFi.</p>
+      <form method="post" action="/admin/settings/update">
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Default WebView URL</span>
+            <small>HTTP or HTTPS URL used by tablets when no custom URL is set</small>
+          </div>
+          <input type="url" id="global_webview_url" name="global_webview_url" class="form-input" value="<%= (settings && settings.global_webview_url) || '' %>" placeholder="http://192.168.10.100" style="width: 100%; max-width: 320px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Polling interval (seconds)</span>
+            <small>10–300</small>
+          </div>
+          <input type="number" id="polling_interval_seconds" name="polling_interval_seconds" class="form-input" value="<%= (settings && settings.polling_interval_seconds) || 25 %>" min="10" max="300" style="width: 100%; max-width: 120px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Online timeout (seconds)</span>
+            <small>Tablet is OFFLINE if no heartbeat within this time (15–300)</small>
+          </div>
+          <input type="number" id="judge_release_timeout_seconds" name="judge_release_timeout_seconds" class="form-input" value="<%= settings && settings.judge_release_timeout_seconds != null ? settings.judge_release_timeout_seconds : 60 %>" min="15" max="300" style="width: 100%; max-width: 120px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Expected WiFi SSID</span>
+            <small>Optional; used for “wrong network” warning</small>
+          </div>
+          <input type="text" id="expected_wifi_ssid" name="expected_wifi_ssid" class="form-input" value="<%= (settings && settings.expected_wifi_ssid) || '' %>" placeholder="e.g. JudgeLAN" maxlength="200" style="width: 100%; max-width: 220px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>App title</span>
+            <small>Optional app title</small>
+          </div>
+          <input type="text" id="app_title" name="app_title" class="form-input" value="<%= (settings && settings.app_title) || '' %>" maxlength="200" style="width: 100%; max-width: 220px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Environment label</span>
+            <small>Optional environment label</small>
+          </div>
+          <input type="text" id="environment_label" name="environment_label" class="form-input" value="<%= (settings && settings.environment_label) || '' %>" maxlength="100" style="width: 100%; max-width: 220px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Kiosk mode by default</span>
+            <small>Enable kiosk mode for new tablets</small>
+          </div>
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="hidden" name="kiosk_mode_enabled_default" value="0">
+            <input type="checkbox" name="kiosk_mode_enabled_default" value="1" <%= (settings && settings.kiosk_mode_enabled_default != null && settings.kiosk_mode_enabled_default != 0) ? 'checked' : '' %> style="width: auto; accent-color: var(--accent-emerald);">
+            <span style="font-size: 0.875rem;">Enabled</span>
+          </label>
+        </div>
+        <div class="flex justify-end" style="margin-top: 1.5rem;">
+          <button type="submit" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save settings
+          </button>
+        </div>
+      </form>
+    </div>
+    <div class="settings-section" style="margin-top: 2rem;">
+      <h3>Admin Tablet</h3>
+      <p>Settings for tablets running in Admin View mode.</p>
+      <form method="post" action="/admin/settings/update">
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Admin alerts (vibrate + sound)</span>
+            <small>When a judge connects, disconnects, or changes assignment, the admin tablet vibrates and plays a notification sound.</small>
+          </div>
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="hidden" name="admin_tablet_alerts_enabled" value="0">
+            <input type="checkbox" name="admin_tablet_alerts_enabled" value="1" <%= (settings && (settings.admin_tablet_alerts_enabled == null || settings.admin_tablet_alerts_enabled != 0)) ? 'checked' : '' %> style="width: auto; accent-color: var(--accent-emerald);">
+            <span style="font-size: 0.875rem;">Enabled</span>
+          </label>
+        </div>
+        <div class="flex justify-end" style="margin-top: 1.5rem;">
+          <button type="submit" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
+  </main>
+  <script src="/socket.io/socket.io.js"></script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<script>
+(function() {
+  var THRESHOLDS = { battery: { good: 50, warn: 20 }, temperature: { good: 35, warn: 42 }, latency: { good: 150, warn: 400 }, cpu: { good: 60, warn: 85 } };
+  function getStatusClass(field, value, opts) {
+    opts = opts || {};
+    var online = opts.online === true;
+    var hasValue = value !== null && value !== undefined && value !== '';
+    switch (field) {
+      case 'battery':
+        if (!online || !hasValue) return 'status-neutral';
+        var bn = parseInt(String(value), 10);
+        if (isNaN(bn)) return 'status-neutral';
+        if (bn >= THRESHOLDS.battery.good) return 'status-good';
+        if (bn >= THRESHOLDS.battery.warn) return 'status-warn';
+        return 'status-bad';
+      case 'temperature':
+        if (!online || !hasValue) return 'status-neutral';
+        var tn = parseFloat(String(value));
+        if (isNaN(tn)) return 'status-neutral';
+        if (tn <= THRESHOLDS.temperature.good) return 'status-good';
+        if (tn <= THRESHOLDS.temperature.warn) return 'status-warn';
+        return 'status-bad';
+      case 'latency':
+        if (!online || !hasValue) return 'status-neutral';
+        var ln = parseInt(String(value), 10);
+        if (isNaN(ln)) return 'status-neutral';
+        if (ln <= THRESHOLDS.latency.good) return 'status-good';
+        if (ln <= THRESHOLDS.latency.warn) return 'status-warn';
+        return 'status-bad';
+      case 'wifi':
+      case 'connection':
+        if (!online) return 'status-bad';
+        var ssid = opts.ssid != null && String(opts.ssid).trim() !== '';
+        var appActive = opts.appActive !== false;
+        if (ssid && appActive) return 'status-good';
+        if (!ssid || !appActive) return 'status-warn';
+        return 'status-neutral';
+      case 'app_active':
+        if (!online || (value !== true && value !== false)) return 'status-neutral';
+        return value === true ? 'status-good' : 'status-bad';
+      case 'cpu':
+        if (!online || !hasValue) return 'status-neutral';
+        var cn = parseInt(String(value), 10);
+        if (isNaN(cn)) return 'status-neutral';
+        if (cn <= THRESHOLDS.cpu.good) return 'status-good';
+        if (cn <= THRESHOLDS.cpu.warn) return 'status-warn';
+        return 'status-bad';
+      case 'online':
+        return value === true ? 'status-good' : 'status-bad';
+      default:
+        return 'status-neutral';
+    }
+  }
+  function getWifiSignalInfo(rssi) {
+    if (rssi === null || rssi === undefined || rssi === '') return null;
+    var n = parseInt(String(rssi), 10);
+    if (isNaN(n)) return null;
+    if (n >= -67) return { bars: 3, statusClass: 'status-good' };
+    if (n >= -80) return { bars: 2, statusClass: 'status-warn' };
+    return { bars: 1, statusClass: 'status-bad' };
+  }
+  window.TabletStatus = window.TabletStatus || {};
+  window.TabletStatus.getStatusClass = getStatusClass;
+  window.TabletStatus.getWifiSignalInfo = getWifiSignalInfo;
+  window.TabletStatus.WIFI_BARS_SVG = '<svg viewBox="0 0 12 10" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="6" width="2" height="4" class="bar"/><rect x="4" y="3" width="2" height="7" class="bar"/><rect x="8" y="0" width="2" height="10" class="bar"/></svg>';
+})();
+</script>

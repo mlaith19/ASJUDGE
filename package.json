@@ -1,0 +1,9 @@
+{
+  "name": "tablet-monitor",
+  "private": true,
+  "description": "Tablet kiosk + Admin backend",
+  "scripts": {
+    "start": "cd server && npm start",
+    "install:all": "cd server && npm install && cd ../tablet_app && flutter pub get"
+  }
+}

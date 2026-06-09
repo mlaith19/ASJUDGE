@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>Arabian Show Judge Admin</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <% if (typeof admin !== 'undefined' && admin) { %>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="nav-logo">&#9733;</span>
+      Arabian Show Judge
+    </div>
+    <div class="nav-links">
+      <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+      <a href="/admin/tablets" class="nav-link">Tablets</a>
+      <a href="/admin/settings" class="nav-link">Settings</a>
+      <span class="nav-user"><%- admin.username %></span>
+      <form action="/admin/logout" method="POST" style="display:inline">
+        <button type="submit" class="btn btn-sm btn-outline">Logout</button>
+      </form>
+    </div>
+  </nav>
+  <% } %>
+
+  <main class="container">
+    <% if (typeof error !== 'undefined' && error && error.length) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+    <% if (typeof success !== 'undefined' && success && success.length) { %>
+      <div class="alert alert-success"><%= success %></div>
+    <% } %>
+
+    <%- body %>
+  </main>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

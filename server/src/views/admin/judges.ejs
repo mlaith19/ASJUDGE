@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'judges', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content">
+    <% if (locals.flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+    <% } %>
+    <h1>Judges</h1>
+    <p class="updated">Master list of judges. Tablets select a judge letter and receive name, color, and credentials from here.</p>
+
+    <% const totalJudges = (judges || []).length; const onlineCount = (judges || []).filter(function(j){ return j.online; }).length; const offlineCount = totalJudges - onlineCount; %>
+    <div class="flex items-center gap-4 mb-6" style="flex-wrap: wrap;">
+      <div class="stat-card" style="flex: 1; min-width: 140px;">
+        <div class="stat-icon purple">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        </div>
+        <div><div class="stat-value" id="judges-stat-total"><%= totalJudges %></div><div class="stat-label">Total Judges</div></div>
+      </div>
+      <div class="stat-card" style="flex: 1; min-width: 140px;">
+        <div class="stat-icon emerald">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+        </div>
+        <div><div class="stat-value" id="judges-stat-online"><%= onlineCount %></div><div class="stat-label">Online</div></div>
+      </div>
+      <div class="stat-card" style="flex: 1; min-width: 140px;">
+        <div class="stat-icon red">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="18" y1="8" x2="23" y2="13"></line><line x1="23" y1="8" x2="18" y2="13"></line></svg>
+        </div>
+        <div><div class="stat-value" id="judges-stat-offline"><%= offlineCount %></div><div class="stat-label">Offline</div></div>
+      </div>
+      <button type="button" class="btn btn-primary" id="btnAddJudge" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        + Add Judge
+      </button>
+    </div>
+
+    <div class="modal-overlay" id="addJudgeModal" style="display: none;" aria-hidden="true">
+      <div class="modal" role="dialog" aria-labelledby="addJudgeModalTitle">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: var(--radius-md); background: var(--gradient-primary); color: var(--bg-primary);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </span>
+            <div>
+              <h2 id="addJudgeModalTitle" style="margin: 0; font-size: 1.25rem;">Add New Judge</h2>
+              <p style="margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--text-muted); font-weight: 400;">Create a new judge profile with custom settings</p>
+            </div>
+          </div>
+          <button type="button" class="modal-close" id="addJudgeModalClose" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <form method="post" action="/admin/judges" id="addJudgeForm">
+          <div class="form-section">
+            <div class="form-section-title">Identity</div>
+          <div class="form-group">
+            <label class="form-label" for="add_judge_name">Judge Name</label>
+            <input type="text" id="add_judge_name" name="judge_name" class="form-input" required maxlength="200" placeholder="e.g. Charlotte">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Judge Type</label>
+            <div class="type-selector" role="group">
+              <button type="button" class="type-option selected" data-type="Judge" aria-pressed="true">Judge</button>
+              <button type="button" class="type-option" data-type="RG" aria-pressed="false">RG</button>
+              <button type="button" class="type-option" data-type="DC" aria-pressed="false">DC</button>
+            </div>
+            <input type="hidden" name="judge_type" id="add_judge_type" value="Judge">
+          </div>
+          <div class="form-group" id="addJudgeLetterGroup">
+            <label class="form-label">Judge Letter</label>
+            <div class="letter-selector" id="addJudgeLetterGrid">
+              <% const usedLetters = (judges || []).map(function(j){ return (j.judge_letter || '').toUpperCase(); }); const letters = 'ABCDEFGHIJKL'.split(''); %>
+              <% letters.forEach(function(L) { const taken = usedLetters.indexOf(L) >= 0; %>
+              <label class="letter-option-wrapper" style="cursor: <%= taken ? 'not-allowed' : 'pointer' %>;">
+                <input type="radio" name="judge_letter_choice" value="<%= L %>" style="position: absolute; opacity: 0;" <%= taken ? 'disabled' : '' %>>
+                <span class="letter-option <%= taken ? 'letter-taken' : '' %>" data-letter="<%= L %>"><%= L %></span>
+              </label>
+              <% }); %>
+            </div>
+            <p class="form-hint">Select a letter or leave unselected for next available.</p>
+          </div>
+          <div class="form-group" id="addJudgeCodeGroup" style="display: none;">
+            <label class="form-label" for="add_judge_code">Judge Code</label>
+            <input type="text" id="add_judge_code" class="form-input" maxlength="10" placeholder="e.g. DC1, RG1" autocomplete="off">
+            <p class="form-hint">Enter a unique code (2–10 letters/numbers). Used for RG/DC instead of a letter.</p>
+          </div>
+          <input type="hidden" name="judge_letter" id="add_judge_letter" value="">
+          <input type="hidden" name="judge_color" value="">
+          </div>
+          <div class="form-section">
+            <div class="form-section-title">Credentials</div>
+          <div class="form-group">
+            <label class="form-label" for="add_username">Username</label>
+            <input type="text" id="add_username" name="username" class="form-input" maxlength="100" placeholder="e.g. judge_charlotte">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="add_password">Password</label>
+            <div class="form-pwd-wrap">
+              <input type="password" id="add_password" name="password" class="form-input" maxlength="200" placeholder="Enter secure password" autocomplete="new-password">
+              <button type="button" class="btn-eye" aria-label="Show password" onclick="toggleFormPwd('add_password', this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="addJudgeCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Judge</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Letter</th>
+            <th>Name</th>
+            <th>Color</th>
+            <th>Username</th>
+            <th>Password</th>
+            <th>Status</th>
+            <th>Assign</th>
+            <th>Login</th>
+            <th>Tablet ID</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% const getHexFn = typeof getHex === 'function' ? getHex : function() { return null; };
+          function esc(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+          (judges || []).forEach(function(j, idx) { const hex = (j.judge_color_hex || '#6b7280'); const hasPwd = !!j.hasPassword; const letterKey = (j.judge_letter || '').toString().trim().toUpperCase(); %>
+          <tr data-judge-letter="<%= letterKey.replace(/"/g, '&quot;') %>" data-judge-id="<%= j.id %>">
+            <td style="color: var(--accent-emerald); font-weight: 700;"><%= idx + 1 %></td>
+            <td><div class="judge-letter judge-letter-cell <%= (j.judge_letter || '').length > 1 ? 'judge-letter-code' : '' %>" style="width: <%= (j.judge_letter || '').length > 1 ? 'auto' : '2.25rem' %>; min-width: 2.25rem; height: 2.25rem; font-size: <%= (j.judge_letter || '').length > 1 ? '0.75rem' : '0.875rem' %>; background: <%= hex || '#6b7280' %>;"><%= (j.judge_letter || '').toUpperCase() %></div></td>
+            <td style="font-weight: 500;"><%= esc(j.judge_name) || '—' %></td>
+            <td class="judge-color-cell"><% if (hex) { %><span class="judge-color-dot" style="background-color:<%= hex %>" title="<%= esc(j.judge_color) %>"></span><% } else { %>—<% } %></td>
+            <td style="color: var(--text-secondary);"><%= esc(j.username) || '—' %></td>
+            <td class="pwd-cell">
+              <% if (hasPwd) { %>
+              <span class="pwd-masked" data-judge-id="<%= j.id %>" data-visible="false">••••••••</span>
+              <button type="button" class="btn-eye" aria-label="Show password" onclick="toggleRowPwd(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.2rem;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <% } else { %>—<% } %>
+            </td>
+            <td class="judge-status-cell"><span class="badge <%= j.online ? 'badge-online' : 'badge-offline' %>"><% if (j.online) { %><span class="badge-dot pulse"></span><% } %><%= j.online ? 'ONLINE' : 'OFFLINE' %></span></td>
+            <td class="judge-assign-cell">—</td>
+            <td class="judge-login-cell">—</td>
+            <td class="judge-tablet-id-cell font-mono" style="font-size: 0.75rem; color: var(--text-secondary);" title="<%= esc(j.device_id) %>"><%= j.device_id ? (j.device_id.length > 20 ? j.device_id.substring(0, 18) + '…' : j.device_id) : '—' %></td>
+            <td>
+              <div class="flex gap-2" style="flex-wrap: wrap;">
+                <a href="/admin/judges/edit/<%= j.id %>" class="btn btn-secondary btn-sm">Edit</a>
+                <form method="post" action="/admin/judges/<%= j.id %>/delete" style="display: inline;" onsubmit="return confirm('Delete this judge? The letter will be free for reuse.');">
+                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+    <% if (!judges || judges.length === 0) { %>
+      <div class="card empty glass-card">No judges yet. Add one above.</div>
+    <% } %>
+  </main>
+  <script>
+    (function() {
+      var modal = document.getElementById('addJudgeModal');
+      var btnOpen = document.getElementById('btnAddJudge');
+      var btnClose = document.getElementById('addJudgeModalClose');
+      var btnCancel = document.getElementById('addJudgeCancel');
+      if (btnOpen) btnOpen.addEventListener('click', function() { modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false'); });
+      function closeModal() { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); }
+      if (btnClose) btnClose.addEventListener('click', closeModal);
+      if (btnCancel) btnCancel.addEventListener('click', closeModal);
+      modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+      document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && modal.style.display === 'flex') closeModal(); });
+      var typeInput = document.getElementById('add_judge_type');
+      var letterGroup = document.getElementById('addJudgeLetterGroup');
+      var codeGroup = document.getElementById('addJudgeCodeGroup');
+      var codeInput = document.getElementById('add_judge_code');
+      var hiddenLetter = document.getElementById('add_judge_letter');
+      function syncJudgeLetterFromForm() {
+        var type = (typeInput && typeInput.value) || 'Judge';
+        if (type === 'RG' || type === 'DC') {
+          if (codeInput) hiddenLetter.value = (codeInput.value || '').trim().toUpperCase();
+        } else {
+          var sel = document.querySelector('#addJudgeLetterGrid input[name="judge_letter_choice"]:checked');
+          if (sel) hiddenLetter.value = sel.value; else hiddenLetter.value = '';
+        }
+      }
+      var typeOptions = document.querySelectorAll('#addJudgeForm .type-option');
+      typeOptions.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          typeOptions.forEach(function(b) { b.classList.remove('selected'); b.setAttribute('aria-pressed', 'false'); });
+          btn.classList.add('selected'); btn.setAttribute('aria-pressed', 'true');
+          var t = btn.getAttribute('data-type') || 'Judge';
+          if (typeInput) typeInput.value = t;
+          if (letterGroup && codeGroup && codeInput) {
+            if (t === 'RG' || t === 'DC') {
+              letterGroup.style.display = 'none';
+              codeGroup.style.display = 'block';
+              document.querySelectorAll('#addJudgeLetterGrid input[type="radio"]').forEach(function(r) { r.checked = false; });
+              document.querySelectorAll('#addJudgeLetterGrid .letter-option').forEach(function(s) { s.classList.remove('selected'); });
+              codeInput.value = t === 'DC' ? 'DC1' : 'RG1';
+              syncJudgeLetterFromForm();
+            } else {
+              letterGroup.style.display = 'block';
+              codeGroup.style.display = 'none';
+              codeInput.value = '';
+              syncJudgeLetterFromForm();
+            }
+          }
+        });
+      });
+      var letterWrappers = document.querySelectorAll('#addJudgeLetterGrid .letter-option-wrapper');
+      letterWrappers.forEach(function(wrap) {
+        var radio = wrap.querySelector('input[type="radio"]');
+        var span = wrap.querySelector('.letter-option');
+        if (!radio || radio.disabled) return;
+        span.addEventListener('click', function() {
+          document.querySelectorAll('#addJudgeLetterGrid .letter-option').forEach(function(s) { s.classList.remove('selected'); });
+          span.classList.add('selected');
+          radio.checked = true;
+          syncJudgeLetterFromForm();
+        });
+      });
+      if (codeInput) codeInput.addEventListener('input', syncJudgeLetterFromForm);
+      var form = document.getElementById('addJudgeForm');
+      if (form) form.addEventListener('submit', function() {
+        syncJudgeLetterFromForm();
+        var type = (typeInput && typeInput.value) || 'Judge';
+        if ((type === 'RG' || type === 'DC') && !(codeInput && codeInput.value.trim())) {
+          event.preventDefault();
+          codeInput.focus();
+          alert('Please enter a Judge Code for RG/DC (e.g. DC1, RG1).');
+          return false;
+        }
+      });
+    })();
+    function toggleRowPwd(btn) {
+      var cell = btn.closest('.pwd-cell');
+      var span = cell.querySelector('.pwd-masked');
+      if (!span) return;
+      var visible = span.getAttribute('data-visible') === 'true';
+      if (visible) {
+        span.textContent = '••••••••';
+        span.setAttribute('data-visible', 'false');
+        btn.setAttribute('aria-label', 'Show password');
+        if (btn.querySelector('svg')) btn.querySelector('svg').innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+        return;
+      }
+      var pwd = span.getAttribute('data-password');
+      if (pwd !== null) {
+        span.textContent = pwd || '—';
+        span.setAttribute('data-visible', 'true');
+        btn.setAttribute('aria-label', 'Hide password');
+        if (btn.querySelector('svg')) btn.querySelector('svg').innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+        return;
+      }
+      var id = span.getAttribute('data-judge-id');
+      if (!id) return;
+      btn.disabled = true;
+      fetch('/admin/judges/' + id + '/password', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var val = (data && data.password !== undefined) ? data.password : '';
+          span.setAttribute('data-password', val);
+          span.textContent = val || '—';
+          span.setAttribute('data-visible', 'true');
+          btn.setAttribute('aria-label', 'Hide password');
+          if (btn.querySelector('svg')) btn.querySelector('svg').innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+        })
+        .catch(function() { span.textContent = '?'; })
+        .then(function() { btn.disabled = false; });
+    }
+    function toggleFormPwd(inputId, btn) {
+      var input = document.getElementById(inputId);
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.setAttribute('aria-label', 'Hide password');
+        if (btn.querySelector('svg')) btn.querySelector('svg').innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+      } else {
+        input.type = 'password';
+        btn.setAttribute('aria-label', 'Show password');
+        if (btn.querySelector('svg')) btn.querySelector('svg').innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+      }
+    }
+    document.querySelectorAll('.color-option').forEach(function(el) {
+      var radio = el.closest('label') && el.closest('label').querySelector('input[type="radio"]');
+      if (radio && radio.checked) el.classList.add('selected');
+    });
+    document.querySelectorAll('.color-picker label').forEach(function(label) {
+      label.addEventListener('click', function() {
+        label.closest('.color-picker').querySelectorAll('.color-option').forEach(function(o) { o.classList.remove('selected'); });
+        var opt = label.querySelector('.color-option');
+        if (opt) opt.classList.add('selected');
+      });
+    });
+  </script>
+  <div id="toast-container" class="toast-container"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+(function() {
+  var socket = io('/admin', { path: '/socket.io' });
+  window.adminSocket = socket;
+  var _prevMap = null;
+
+  function showToast(msg, type, dur) {
+    var c = document.getElementById('toast-container');
+    if (!c) return;
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(function() { t.classList.add('show'); }, 10);
+    var ms = dur || (type === 'error' ? 5000 : 4000);
+    setTimeout(function() { t.classList.remove('show'); setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 400); }, ms);
+  }
+
+  function requestState() { if (socket.connected) socket.emit('request_state'); }
+
+  var rowByLetter = {};
+  document.querySelectorAll('tr[data-judge-letter]').forEach(function(r) {
+    var k = (r.getAttribute('data-judge-letter') || '').trim().toUpperCase();
+    if (k) rowByLetter[k] = r;
+  });
+
+  var BTN = 'font-size:0.7rem;padding:0.25rem 0.65rem;border-radius:4px;cursor:pointer;font-weight:600;border:none;';
+  var BTN_GREEN  = BTN + 'background:var(--accent-emerald);color:#fff;';
+  var BTN_GRAY   = BTN + 'background:var(--bg-glass);color:var(--text-primary);border:1px solid var(--border-color)!important;';
+  var SEL_STYLE  = 'font-size:0.7rem;padding:0.15rem 0.3rem;background:var(--bg-glass);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);max-width:110px;';
+
+  function hidden(name, val) { return '<input type="hidden" name="' + name + '" value="' + val + '">'; }
+  function formPost(action, fields, btnStyle, btnLabel) {
+    return '<form method="post" action="' + action + '" style="display:inline-flex;align-items:center;gap:0.25rem">' +
+      fields + '<button type="submit" style="' + btnStyle + '">' + btnLabel + '</button></form>';
+  }
+
+  function assignCellHtml(vm) {
+    if (vm.assigned && vm.tabletDbId) {
+      // UNASSIGN (gray)
+      return formPost(
+        '/admin/tablets/' + vm.tabletDbId + '/pending-action',
+        hidden('action','edit_judge_setup') + hidden('redirect','/admin/judges'),
+        BTN_GRAY, 'UNASSIGN'
+      );
+    }
+    var avail = vm.availableTablets || [];
+    if (avail.length === 0) return '<span style="color:var(--text-muted);font-size:0.7rem">No tablets</span>';
+    // ASSIGN (green) — dropdown of unassigned online tablets
+    var opts = avail.map(function(t) { return '<option value="' + t.id + '">' + t.label + '</option>'; }).join('');
+    return '<form method="post" action="/admin/tablets/' + avail[0].id + '/pending-action" ' +
+      'style="display:inline-flex;align-items:center;gap:0.25rem" ' +
+      'onsubmit="var s=this.querySelector(\'[name=tid]\');this.action=\'/admin/tablets/\'+s.value+\'/pending-action\'">' +
+      hidden('action','force_judge_assignment') + hidden('judge_letter', vm.letter) + hidden('redirect','/admin/judges') +
+      '<select name="tid" style="' + SEL_STYLE + '">' + opts + '</select>' +
+      '<button type="submit" style="' + BTN_GREEN + '">ASSIGN</button>' +
+      '</form>';
+  }
+
+  function loginCellHtml(vm) {
+    if (!vm.online || !vm.tabletDbId) return '—';
+    if (vm.loginStatus === 'LOGGED_IN') {
+      return formPost(
+        '/admin/tablets/' + vm.tabletDbId + '/pending-action',
+        hidden('action','logout_webview') + hidden('redirect','/admin/judges'),
+        BTN_GRAY, 'LOGOUT'
+      );
+    }
+    return formPost(
+      '/admin/tablets/' + vm.tabletDbId + '/pending-action',
+      hidden('action','login_webview') + hidden('redirect','/admin/judges'),
+      BTN_GREEN, 'LOGIN'
+    );
+  }
+
+  function renderRow(row, vm) {
+    var s = row.querySelector('.judge-status-cell');
+    if (s) s.innerHTML = '<span class="badge ' + (vm.online ? 'badge-online' : 'badge-offline') + '">' +
+      (vm.online ? '<span class="badge-dot pulse"></span>' : '') + (vm.online ? 'ONLINE' : 'OFFLINE') + '</span>';
+
+    var l = row.querySelector('.judge-letter-cell');
+    if (l) l.style.background = vm.hex || '#6b7280';
+
+    var tid = row.querySelector('.judge-tablet-id-cell');
+    if (tid) { tid.textContent = vm.deviceDisplay || '—'; tid.setAttribute('title', vm.deviceId || ''); }
+
+    var ac = row.querySelector('.judge-assign-cell');
+    if (ac) ac.innerHTML = assignCellHtml(vm);
+
+    var lc = row.querySelector('.judge-login-cell');
+    if (lc) lc.innerHTML = loginCellHtml(vm);
+  }
+
+  function applySnapshot(state) {
+    if (!state || !Array.isArray(state.judges)) return;
+    var avail = state.availableTablets || [];
+
+    // Diff for toasts
+    var newMap = {};
+    state.judges.forEach(function(j) {
+      var L = (j.judge_letter || '').toString().trim().toUpperCase();
+      if (!L) return;
+      newMap[L] = { online: !!j.online, name: (j.judge_name || 'Judge ' + L).toString().trim() };
+    });
+    if (_prevMap !== null) {
+      Object.keys(newMap).forEach(function(L) {
+        var n = newMap[L], o = _prevMap[L];
+        if (!o) return;
+        if (!o.online && n.online)  showToast(n.name + ' — ONLINE', 'success');
+        else if (o.online && !n.online) showToast(n.name + ' — OFFLINE', 'error');
+      });
+    }
+    _prevMap = newMap;
+
+    // Reset all rows to neutral first
+    Object.keys(rowByLetter).forEach(function(k) {
+      var row = rowByLetter[k];
+      var s = row.querySelector('.judge-status-cell');
+      if (s) s.innerHTML = '<span class="badge badge-offline">OFFLINE</span>';
+      var l = row.querySelector('.judge-letter-cell'); if (l) l.style.background = '#6b7280';
+      var t = row.querySelector('.judge-tablet-id-cell'); if (t) { t.textContent = '—'; t.setAttribute('title',''); }
+      var ac = row.querySelector('.judge-assign-cell');
+      if (ac) ac.innerHTML = assignCellHtml({ assigned: false, letter: k, availableTablets: avail });
+      var lc = row.querySelector('.judge-login-cell'); if (lc) lc.innerHTML = '—';
+    });
+
+    var used = {};
+    state.judges.forEach(function(j) {
+      var L = (j.judge_letter || '').toString().trim().toUpperCase();
+      if (!L || !rowByLetter[L]) return;
+      var did = (j.current_tablet_id || '').toString().trim();
+      if (did && used[did]) did = '';
+      if (did) used[did] = true;
+      var assigned = (j.assignment_status || '') === 'assigned' && did.length > 0;
+      renderRow(rowByLetter[L], {
+        online: !!j.online,
+        assigned: assigned,
+        tabletDbId: j.tablet_db_id || null,
+        letter: L,
+        loginStatus: j.loginStatus || null,
+        availableTablets: avail,
+        deviceId: assigned ? did : '',
+        deviceDisplay: did.length > 20 ? did.substring(0, 18) + '…' : did,
+        hex: assigned ? (j.judge_color_hex || '#6b7280') : '#6b7280',
+      });
+    });
+
+    var st = state.stats || {};
+    var tot = Object.keys(rowByLetter).length;
+    ['judges-stat-total','judges-stat-online','judges-stat-offline'].forEach(function(id, i) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = [st.total != null ? st.total : tot, st.online != null ? st.online : 0, st.offline != null ? st.offline : 0][i];
+    });
+  }
+
+  socket.on('judges_state',     applySnapshot);
+  socket.on('connect',          function() { _prevMap = null; requestState(); });
+  socket.on('disconnect',       function() { _prevMap = null; });
+  socket.on('tablet_connected', requestState);
+  socket.on('tablet_offline',   requestState);
+  socket.on('tablet_heartbeat', requestState);
+  socket.on('command_completed',requestState);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') requestState();
+  });
+})();
+  </script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>

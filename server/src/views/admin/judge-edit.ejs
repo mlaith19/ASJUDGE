@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'judges', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content">
+    <% if (locals.flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+    <% } %>
+    <a href="/admin/judges" class="flex items-center gap-2 mb-6" style="color: var(--text-muted); font-size: 0.875rem; text-decoration: none;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      Back to Judges
+    </a>
+    <h1>Edit judge</h1>
+
+    <div class="card glass-card mt-6" style="max-width: 560px;">
+      <form method="post" action="/admin/judges/<%= judge.id %>/update">
+        <input type="hidden" name="redirect" value="/admin/judges">
+        <div class="form-section">
+          <div class="form-section-title">Identity</div>
+        <div class="form-group" id="editJudgeLetterGroup" style="<%= (judge.judge_letter || '').length > 1 ? 'display:none' : '' %>">
+          <label class="form-label">Judge letter</label>
+          <div class="letter-selector" id="editJudgeLetterGrid">
+            <% const judgesList = typeof judges !== 'undefined' ? judges : []; const usedLetters = judgesList.map(function(j){ return (j.judge_letter || '').toUpperCase(); }); const letters = 'ABCDEFGHIJKL'.split(''); const currentLetter = (judge.judge_letter || '').toUpperCase(); %>
+            <% letters.forEach(function(L) { const taken = usedLetters.indexOf(L) >= 0 && L !== currentLetter; %>
+            <label class="letter-option-wrapper" style="cursor: <%= taken ? 'not-allowed' : 'pointer' %>;">
+              <input type="radio" name="judge_letter_choice" value="<%= L %>" style="position: absolute; opacity: 0;" <%= taken ? 'disabled' : '' %> <%= (judge.judge_letter || '').length === 1 && L === currentLetter ? 'checked' : '' %>>
+              <span class="letter-option <%= taken ? 'letter-taken' : '' %> <%= (judge.judge_letter || '').length === 1 && L === currentLetter ? 'selected' : '' %>" data-letter="<%= L %>"><%= L %></span>
+            </label>
+            <% }); %>
+          </div>
+          <p class="form-hint">Choose another letter to change. Letters in use by other judges are disabled.</p>
+        </div>
+        <div class="form-group" id="editJudgeCodeGroup" style="<%= (judge.judge_letter || '').length <= 1 ? 'display:none' : '' %>">
+          <label class="form-label" for="edit_judge_code">Judge code</label>
+          <input type="text" id="edit_judge_code" class="form-input" value="<%= (judge.judge_letter || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>" maxlength="10" placeholder="e.g. DC1, RG1" autocomplete="off">
+          <p class="form-hint">Code for RG/DC judges (2–10 letters/numbers). Editable.</p>
+        </div>
+        <input type="hidden" name="judge_letter" id="edit_judge_letter" value="<%= (judge.judge_letter || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>">
+        <div class="form-group">
+          <label class="form-label" for="edit_judge_name">Judge name</label>
+          <input type="text" id="edit_judge_name" name="judge_name" class="form-input" value="<%= judge.judge_name || '' %>" maxlength="200" required>
+        </div>
+        <input type="hidden" name="judge_color" value="<%= (judge.judge_color || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>">
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Credentials</div>
+        <div class="form-group">
+          <label class="form-label" for="edit_username">Username</label>
+          <input type="text" id="edit_username" name="username" class="form-input" value="<%= judge.username || '' %>" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit_password">Password</label>
+          <div class="form-pwd-wrap">
+            <input type="password" id="edit_password" name="password" class="form-input" maxlength="200" placeholder="Leave blank to keep current" autocomplete="new-password">
+            <button type="button" class="btn-eye" aria-label="Show password" onclick="toggleFormPwd('edit_password', this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <p class="form-hint">Leave blank to keep current password.</p>
+        </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a href="/admin/judges" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </main>
+  <script>
+    (function() {
+      var hiddenLetter = document.getElementById('edit_judge_letter');
+      var codeInput = document.getElementById('edit_judge_code');
+      var letterGroup = document.getElementById('editJudgeLetterGroup');
+      var codeGroup = document.getElementById('editJudgeCodeGroup');
+      function syncEditJudgeLetter() {
+        if (!hiddenLetter) return;
+        if (codeGroup && codeGroup.style.display !== 'none' && codeInput) {
+          hiddenLetter.value = (codeInput.value || '').trim().toUpperCase();
+        } else {
+          var sel = document.querySelector('#editJudgeLetterGrid input[name="judge_letter_choice"]:checked');
+          hiddenLetter.value = sel ? sel.value : '';
+        }
+      }
+      var letterWrappers = document.querySelectorAll('#editJudgeLetterGrid .letter-option-wrapper');
+      letterWrappers.forEach(function(wrap) {
+        var radio = wrap.querySelector('input[type="radio"]');
+        var span = wrap.querySelector('.letter-option');
+        if (!radio || radio.disabled) return;
+        span.addEventListener('click', function() {
+          document.querySelectorAll('#editJudgeLetterGrid .letter-option').forEach(function(s) { s.classList.remove('selected'); });
+          span.classList.add('selected');
+          radio.checked = true;
+          syncEditJudgeLetter();
+        });
+      });
+      if (codeInput) codeInput.addEventListener('input', syncEditJudgeLetter);
+      var form = document.querySelector('form[action*="/update"]');
+      if (form) form.addEventListener('submit', syncEditJudgeLetter);
+    })();
+    function toggleFormPwd(inputId, btn) {
+      var input = document.getElementById(inputId);
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.setAttribute('aria-label', 'Hide password');
+        btn.querySelector('svg').innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+      } else {
+        input.type = 'password';
+        btn.setAttribute('aria-label', 'Show password');
+        btn.querySelector('svg').innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+      }
+    }
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>

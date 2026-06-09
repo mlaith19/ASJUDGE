@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+  <style>
+    .tablet-detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .tablet-detail-popup { background: var(--bg-card); border-radius: var(--radius-xl); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .tablet-detail-popup .popup-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+    .tablet-detail-popup .popup-body { padding: 1rem; }
+    .tablet-detail-popup .popup-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem 1rem; margin-bottom: 0.75rem; }
+    .tablet-detail-popup .popup-field { min-width: 0; }
+    .tablet-detail-popup .popup-field .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); margin-bottom: 0.2rem; }
+    .tablet-detail-popup .popup-field .value { font-size: 0.85rem; word-break: break-all; }
+    .tablet-detail-popup .section-title { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin: 1rem 0 0.5rem; padding-bottom: 0.25rem; }
+    .tablet-detail-popup .form-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+    .tablet-detail-popup .form-row .span-2 { grid-column: span 2; }
+    .tablet-detail-popup .form-row .span-3 { grid-column: span 3; }
+    .tablet-detail-popup .actions-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .wifi-cell { display: inline-flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+    .wifi-bars { display: inline-flex; vertical-align: middle; }
+    .wifi-bars svg { width: 14px; height: 10px; }
+    .wifi-bars .bar { fill: rgba(255,255,255,0.2); }
+    .wifi-bars.bars-1 .bar:nth-child(1), .wifi-bars.bars-2 .bar:nth-child(1), .wifi-bars.bars-2 .bar:nth-child(2), .wifi-bars.bars-3 .bar { fill: currentColor; }
+    @media (max-width: 640px) {
+      .tablet-detail-popup .popup-row { grid-template-columns: repeat(2, 1fr); }
+      .tablet-detail-popup .form-row { grid-template-columns: repeat(2, 1fr); }
+      .tablet-detail-popup .form-row .span-2 { grid-column: span 2; }
+      .tablet-detail-popup .form-row .span-3 { grid-column: span 2; }
+    }
+  </style>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'tablets', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content" style="max-width: 900px;">
+    <% if (locals.flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+    <% } %>
+
+    <%
+      const online = tablet.isLiveOnline === true;
+      const lowBattery = tablet.battery_level != null && tablet.battery_level < 20;
+      const viewSettings = typeof settings !== 'undefined' ? settings : {};
+      const expectedSsid = (viewSettings.expected_wifi_ssid || '').trim();
+      const wrongNetwork = expectedSsid && tablet.wifi_ssid !== expectedSsid && tablet.wifi_ssid != null && tablet.wifi_ssid !== '';
+      const hasCustomUrl = tablet.custom_webview_url && tablet.custom_webview_url.trim();
+      const urlMismatch = (tablet.current_webview_url || '').trim() && (tablet.computedTargetUrl || '').trim() && (tablet.current_webview_url || '').trim() !== (tablet.computedTargetUrl || '').trim();
+      const tabletColorHex = tablet.tabletColorHex || '#6b7280';
+      const displayTitle = (tablet.tablet_label && String(tablet.tablet_label).trim()) ? String(tablet.tablet_label).trim() : tablet.device_id;
+      const statusClass = typeof getStatusClass === 'function' ? getStatusClass : function() { return 'status-neutral'; };
+      const wifiSignalInfo = (online && typeof getWifiSignalInfo === 'function') ? getWifiSignalInfo(tablet.signal_strength) : null;
+    %>
+
+    <div class="tablet-detail-overlay" data-device-id="<%= (tablet.device_id || '').replace(/"/g, '&quot;') %>">
+      <div class="tablet-detail-popup">
+        <div class="popup-header">
+          <div class="flex items-center gap-3">
+            <div style="width: 2.25rem; height: 2.25rem; border-radius: 50%; background: <%= tabletColorHex %>; flex-shrink: 0;"></div>
+            <div>
+              <div style="font-weight: 600; font-size: 0.95rem;"><%= displayTitle %></div>
+              <div class="font-mono" style="font-size: 0.65rem; color: var(--text-muted);"><%= tablet.device_id %></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="badge <%= online ? 'badge-online' : 'badge-offline' %> <%= statusClass('online', online) %>" style="font-size: 0.75rem; padding: 0.35rem 0.65rem;"><% if (online) { %><span class="badge-dot pulse"></span><% } %><%= online ? 'ONLINE' : 'OFFLINE' %></span>
+            <a href="/admin/tablets" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.8rem; text-decoration: none;">Close</a>
+          </div>
+        </div>
+
+        <div class="popup-body">
+          <div id="live-telemetry-stale" class="popup-field" style="display: <%= (online && !tablet.battery_level && !tablet.ip_address && !(tablet.wifi_ssid && tablet.wifi_ssid.trim())) ? 'block' : 'none' %>; margin-bottom: 0.5rem; padding: 0.35rem 0.5rem; background: var(--surface-container-high); border-radius: 6px; font-size: 0.75rem; color: var(--text-muted);">
+            Connected; waiting for device data (battery, IP, WiFi).
+          </div>
+          <div class="popup-row">
+            <div class="popup-field">
+              <div class="label">Battery</div>
+              <div id="live-battery" class="value <%= statusClass('battery', tablet.battery_level, { online }) %>"><% if (online) { %><%= tablet.battery_level != null ? tablet.battery_level + '%' : '—' %><% } else { %>—<% } %></div>
+            </div>
+            <div class="popup-field">
+              <div class="label">Charging</div>
+              <div id="live-charging" class="value status-neutral"><% if (online) { %><%= tablet.charging ? 'Yes' : 'No' %><% } else { %>—<% } %></div>
+            </div>
+            <div class="popup-field">
+              <div class="label">Temperature</div>
+              <div id="live-temperature" class="value <%= statusClass('temperature', tablet.battery_temperature, { online }) %>"><% if (online) { %><%= tablet.battery_temperature != null ? tablet.battery_temperature + '°C' : '—' %><% } else { %>—<% } %></div>
+            </div>
+          </div>
+          <div class="popup-row">
+            <div class="popup-field">
+              <div class="label">CPU</div>
+              <div id="live-cpu" class="value <%= statusClass('cpu', tablet.cpu_usage, { online }) %>"><% if (online) { %><%= tablet.cpu_usage != null ? tablet.cpu_usage + '%' : '—' %><% } else { %>—<% } %></div>
+            </div>
+            <div class="popup-field">
+              <div class="label">Latency</div>
+              <div id="live-latency-ms" class="value <%= statusClass('latency', tablet.latency_ms, { online }) %>"><% if (online) { %><%= tablet.latency_ms != null ? tablet.latency_ms + 'ms' : '—' %><% } else { %>—<% } %></div>
+            </div>
+            <div class="popup-field">
+              <div class="label">App Active</div>
+              <div id="live-app-active" class="value <%= statusClass('app_active', tablet.app_active, { online }) %>"><% if (online) { %><%= tablet.app_active === true ? 'true' : (tablet.app_active === false ? 'false' : '—') %><% } else { %>—<% } %></div>
+            </div>
+          </div>
+          <div class="popup-row">
+            <div class="popup-field">
+              <div class="label">WiFi</div>
+              <div id="live-wifi" class="value <%= (online && wrongNetwork) ? 'status-warn' : statusClass('wifi', null, { online, ssid: tablet.wifi_ssid, appActive: tablet.app_active }) %>">
+                <% if (online) { %>
+                <span class="wifi-cell">
+                  <span class="wifi-ssid"><%= tablet.wifi_ssid || '—' %></span>
+                  <% if (wifiSignalInfo) { %><span class="wifi-bars <%= wifiSignalInfo.statusClass %> bars-<%= wifiSignalInfo.bars %>" title="RSSI <%= tablet.signal_strength %> dBm"><svg viewBox="0 0 12 10" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="6" width="2" height="4" class="bar"/><rect x="4" y="3" width="2" height="7" class="bar"/><rect x="8" y="0" width="2" height="10" class="bar"/></svg></span><% } %>
+                  <% if (wrongNetwork) { %><span class="badge" style="font-size: 0.6rem;">Wrong</span><% } %>
+                </span>
+                <% } else { %>—<% } %>
+              </div>
+            </div>
+            <div class="popup-field">
+              <div class="label">IP Address</div>
+              <div id="live-ip" class="value font-mono status-neutral"><% if (online) { %><%= tablet.ip_address || '—' %><% } else { %>—<% } %></div>
+            </div>
+            <div class="popup-field">
+              <div class="label">Last Seen</div>
+              <div id="live-last-seen" class="value"><%= tablet.last_seen_at ? new Date(tablet.last_seen_at).toLocaleString() : '—' %></div>
+            </div>
+          </div>
+          <div class="popup-row">
+            <div class="popup-field">
+              <div class="label">Tablet ID</div>
+              <div class="value font-mono" style="font-size: 0.75rem; word-break: break-all;"><%= tablet.device_id %></div>
+            </div>
+            <div class="popup-field" style="grid-column: span 2;">
+              <div class="label">Current URL</div>
+              <div id="live-current-url" class="value status-neutral" style="font-size: 0.75rem; word-break: break-all;"><% if (online) { %><%= tablet.current_webview_url ? tablet.current_webview_url.replace(/^https?:\/\//, '') : '—' %><% } else { %>—<% } %></div>
+            </div>
+          </div>
+          <div class="popup-row">
+            <div class="popup-field" style="grid-column: span 3;">
+              <div class="label">Target URL</div>
+              <div class="value" style="font-size: 0.75rem; word-break: break-all;"><%= tablet.computedTargetUrl ? tablet.computedTargetUrl.replace(/^https?:\/\//, '') : '—' %><% if (hasCustomUrl) { %> <span class="badge" style="font-size: 0.6rem;">Custom</span><% } %></div>
+            </div>
+          </div>
+
+          <div class="section-title">Edit tablet</div>
+          <form method="post" action="/admin/tablets/<%= tablet.id %>/update">
+            <input type="hidden" name="judge_letter" value="<%= (tablet.judge_letter || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>">
+            <input type="hidden" name="judge_name" value="<%= (tablet.judge_name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>">
+            <input type="hidden" name="judge_color" value="<%= (tablet.judge_color || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;') %>">
+            <div class="form-row">
+              <div class="popup-field">
+                <label class="label" for="tablet_label">Tablet label</label>
+                <input type="text" id="tablet_label" name="tablet_label" class="form-input" value="<%= tablet.tablet_label || '' %>" maxlength="200" style="padding: 0.4rem 0.5rem; font-size: 0.8rem;">
+              </div>
+              <div class="popup-field span-2">
+                <label class="label" for="note">Internal note</label>
+                <textarea id="note" name="note" class="form-input" rows="2" maxlength="1000" style="padding: 0.4rem 0.5rem; font-size: 0.8rem;"><%= tablet.note || '' %></textarea>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="popup-field span-3">
+                <label class="label" for="custom_webview_url">Custom WebView URL</label>
+                <input type="url" id="custom_webview_url" name="custom_webview_url" class="form-input" value="<%= tablet.custom_webview_url || '' %>" placeholder="http://..." style="padding: 0.4rem 0.5rem; font-size: 0.8rem;">
+              </div>
+            </div>
+            <div class="actions-row">
+              <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">Save</button>
+              <% if (hasCustomUrl) { %>
+              <button type="submit"
+                      formaction="/admin/tablets/<%= tablet.id %>/clear-webview-override"
+                      formmethod="post"
+                      class="btn btn-secondary"
+                      style="padding: 0.4rem 0.75rem; font-size: 0.8rem; margin-right: 0.5rem;">
+                Clear custom URL
+              </button>
+              <% } %>
+              <button type="submit"
+                      id="delete-tablet-button"
+                      formaction="/admin/tablets/<%= tablet.id %>/delete"
+                      formmethod="post"
+                      class="btn btn-danger"
+                      style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+                Delete tablet
+              </button>
+            </div>
+          </form>
+          <script>
+            (function() {
+              var delBtn = document.getElementById('delete-tablet-button');
+              if (delBtn) delBtn.addEventListener('click', function(e) {
+                if (!confirm('Are you sure you want to delete this tablet? This action cannot be undone.')) {
+                  e.preventDefault();
+                }
+              });
+            })();
+          </script>
+
+          <div class="section-title">Actions</div>
+          <div class="actions-row">
+            <form method="post" action="/admin/tablets/<%= tablet.id %>/force-reload" style="margin: 0;"><button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">Force reload</button></form>
+            <form method="post" action="/admin/tablets/<%= tablet.id %>/pending-action" style="margin: 0;"><input type="hidden" name="action" value="login_webview"><input type="hidden" name="redirect" value="/admin/tablets/<%= tablet.id %>"><button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">Login</button></form>
+            <form method="post" action="/admin/tablets/<%= tablet.id %>/pending-action" style="margin: 0;"><input type="hidden" name="action" value="reload_webview"><input type="hidden" name="redirect" value="/admin/tablets/<%= tablet.id %>"><button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">Reload</button></form>
+            <form method="post" action="/admin/tablets/<%= tablet.id %>/pending-action" style="margin: 0;"><input type="hidden" name="action" value="logout_webview"><input type="hidden" name="redirect" value="/admin/tablets/<%= tablet.id %>"><button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">Logout</button></form>
+            <form method="post" action="/admin/tablets/<%= tablet.id %>/pending-action" style="margin: 0;"><input type="hidden" name="action" value="clear_session"><input type="hidden" name="redirect" value="/admin/tablets/<%= tablet.id %>"><button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem;">Clear</button></form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    document.querySelector('.tablet-detail-overlay').addEventListener('click', function(e) {
+      if (e.target === this) window.location.href = '/admin/tablets';
+    });
+  </script>
+  <%- include('../partials/tablet-status-helper') %>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  (function() {
+    var overlay = document.querySelector('.tablet-detail-overlay');
+    var deviceId = overlay && overlay.getAttribute('data-device-id');
+    if (!deviceId) return;
+    var socket = window.adminSocket || io('/admin', { path: '/socket.io' });
+    if (!window.adminSocket) window.adminSocket = socket;
+
+    function byId(id) { return document.getElementById(id); }
+    function bySel(sel) { return document.querySelector(sel); }
+    function setText(el, text) { if (el) el.textContent = text; }
+    function fmt(val, suffix) {
+      if (val === null || val === undefined || val === '') return '—';
+      return String(val) + (suffix || '');
+    }
+    function fmtDate(val) {
+      if (!val) return '—';
+      try { return new Date(val).toLocaleString(); } catch (e) { return val; }
+    }
+    function getSc(field, value, opts) {
+      return (window.TabletStatus && window.TabletStatus.getStatusClass) ? window.TabletStatus.getStatusClass(field, value, opts) : 'status-neutral';
+    }
+    function updateTelemetry(t) {
+      if (!t || t.device_id !== deviceId) return;
+      var online = t.isLiveOnline === true;
+      var badge = bySel('.tablet-detail-popup .popup-header .badge');
+      if (badge) {
+        badge.className = 'badge ' + (online ? 'badge-online' : 'badge-offline') + ' ' + getSc('online', online);
+        badge.innerHTML = (online ? '<span class="badge-dot pulse"></span>' : '') + (online ? 'ONLINE' : 'OFFLINE');
+      }
+      setText(byId('live-last-seen'), fmtDate(t.last_seen_at));
+      if (!online) {
+        var neutral = 'value status-neutral';
+        setText(byId('live-battery'), '—');
+        if (byId('live-battery')) byId('live-battery').className = neutral;
+        setText(byId('live-charging'), '—');
+        setText(byId('live-temperature'), '—');
+        setText(byId('live-cpu'), '—');
+        setText(byId('live-wifi'), '—');
+        setText(byId('live-ip'), '—');
+        setText(byId('live-latency-ms'), '—');
+        setText(byId('live-app-active'), '—');
+        setText(byId('live-current-url'), '—');
+        [ 'live-charging', 'live-temperature', 'live-cpu', 'live-wifi', 'live-ip', 'live-latency-ms', 'live-app-active', 'live-current-url' ].forEach(function(id) {
+          var el = byId(id);
+          if (el) el.className = 'value status-neutral' + (id === 'live-ip' ? ' font-mono' : '');
+        });
+        var staleEl = byId('live-telemetry-stale');
+        if (staleEl) staleEl.style.display = 'none';
+        return;
+      }
+      setText(byId('live-battery'), t.battery_level != null ? t.battery_level + '%' : '—');
+      if (byId('live-battery')) byId('live-battery').className = 'value ' + getSc('battery', t.battery_level, { online: true });
+      setText(byId('live-charging'), t.charging ? 'Yes' : 'No');
+      setText(byId('live-temperature'), t.battery_temperature != null ? t.battery_temperature + '°C' : '—');
+      if (byId('live-temperature')) byId('live-temperature').className = 'value ' + getSc('temperature', t.battery_temperature, { online: true });
+      setText(byId('live-cpu'), t.cpu_usage != null ? t.cpu_usage + '%' : '—');
+      if (byId('live-cpu')) byId('live-cpu').className = 'value ' + getSc('cpu', t.cpu_usage, { online: true });
+      var wifiEl = byId('live-wifi');
+      if (wifiEl) {
+        wifiEl.className = 'value ' + getSc('wifi', null, { online: true, ssid: t.wifi_ssid, appActive: t.app_active });
+        var wifiInfo = (window.TabletStatus && window.TabletStatus.getWifiSignalInfo) ? window.TabletStatus.getWifiSignalInfo(t.signal_strength) : null;
+        var ssidText = (t.wifi_ssid || '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        var barsHtml = wifiInfo ? '<span class="wifi-bars ' + wifiInfo.statusClass + ' bars-' + wifiInfo.bars + '" title="RSSI ' + (t.signal_strength != null ? t.signal_strength : '') + ' dBm">' + (window.TabletStatus && window.TabletStatus.WIFI_BARS_SVG ? window.TabletStatus.WIFI_BARS_SVG : '') + '</span>' : '';
+        wifiEl.innerHTML = '<span class="wifi-cell"><span class="wifi-ssid">' + ssidText + '</span>' + barsHtml + '</span>';
+      }
+      setText(byId('live-ip'), t.ip_address || '—');
+      setText(byId('live-latency-ms'), t.latency_ms != null ? t.latency_ms + 'ms' : '—');
+      if (byId('live-latency-ms')) byId('live-latency-ms').className = 'value ' + getSc('latency', t.latency_ms, { online: true });
+      setText(byId('live-app-active'), (t.app_active === true) ? 'true' : ((t.app_active === false) ? 'false' : '—'));
+      if (byId('live-app-active')) byId('live-app-active').className = 'value ' + getSc('app_active', t.app_active, { online: true });
+      setText(byId('live-current-url'), t.current_webview_url ? t.current_webview_url.replace(/^https?:\/\//, '') : '—');
+      var staleEl2 = byId('live-telemetry-stale');
+      if (staleEl2) {
+        var hasData = t.battery_level != null || t.ip_address != null || (t.wifi_ssid && t.wifi_ssid.trim());
+        staleEl2.style.display = !hasData ? 'block' : 'none';
+      }
+    }
+
+    socket.on('tablet_heartbeat', function(data) {
+      try {
+        console.log('[TELEM_F_admin_raw]', JSON.stringify({
+          deviceId: data && data.deviceId,
+          payload_keys: data && Object.keys(data),
+          tablet_keys: data && data.tablet && Object.keys(data.tablet),
+          tablet_telemetry: data && data.tablet ? {
+            device_id: data.tablet.device_id,
+            battery_level: data.tablet.battery_level,
+            charging: data.tablet.charging,
+            battery_temperature: data.tablet.battery_temperature,
+            cpu_usage: data.tablet.cpu_usage,
+            wifi_ssid: data.tablet.wifi_ssid,
+            ip_address: data.tablet.ip_address,
+            current_webview_url: (data.tablet.current_webview_url || '').toString().slice(0, 120)
+          } : null
+        }));
+      } catch (e) { console.log('[TELEM_F_admin_raw] err', e); }
+      var match = data && data.deviceId === deviceId;
+      console.log('[TELEM_G_render]', 'deviceId_match=' + match + ' overlay_deviceId=' + deviceId + ' event_deviceId=' + (data && data.deviceId));
+      if (data && data.deviceId === deviceId && data.tablet) {
+        var t = data.tablet;
+        console.log('[TELEM_G_values]', 'battery=' + t.battery_level + ' charging=' + t.charging + ' temp=' + t.battery_temperature + ' cpu=' + t.cpu_usage + ' wifi=' + t.wifi_ssid + ' ip=' + t.ip_address + ' url=' + ((t.current_webview_url || '').toString().slice(0, 80)));
+        updateTelemetry(t);
+      }
+    });
+    socket.on('tablet_offline', function(data) {
+      if (data && data.deviceId === deviceId) {
+        var t = data.tablet ? Object.assign({}, data.tablet, { isLiveOnline: false }) : { device_id: deviceId, isLiveOnline: false, last_seen_at: null };
+        updateTelemetry(t);
+      }
+    });
+    socket.on('connect', function() { socket.emit('request_state'); });
+  })();
+  </script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>

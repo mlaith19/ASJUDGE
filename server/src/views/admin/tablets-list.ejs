@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('../partials/head') %>
+</head>
+<body class="animated-bg">
+  <%- include('../partials/header', { activePage: 'tablets', username: typeof username !== 'undefined' ? username : 'admin' }) %>
+  <main class="main-content">
+    <h1>Tablets</h1>
+    <% const s = typeof stats !== 'undefined' ? stats : { total: (tablets || []).length, online: 0, offline: (tablets || []).length, lowBattery: 0 }; %>
+    <div class="stats-grid mb-6" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="stat-card">
+        <div class="stat-icon purple">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+        </div>
+        <div><div class="stat-value"><%= s.total %></div><div class="stat-label">Total Tablets</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon emerald">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        </div>
+        <div><div class="stat-value"><%= s.online %></div><div class="stat-label">Online</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon red">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path></svg>
+        </div>
+        <div><div class="stat-value"><%= s.offline %></div><div class="stat-label">Offline</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon amber">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line></svg>
+        </div>
+        <div><div class="stat-value"><%= s.lowBattery %></div><div class="stat-label">Low Battery</div></div>
+      </div>
+    </div>
+
+    <% if (!tablets || tablets.length === 0) { %>
+      <div class="card empty glass-card">No tablets match the filters.</div>
+    <% } else { %>
+      <div class="tablet-grid">
+        <% tablets.forEach(function(t) {
+          const online = t.isLiveOnline === true;
+          const lowBattery = t.battery_level != null && t.battery_level < 20;
+          const batteryClass = lowBattery ? 'low' : (t.battery_level != null && t.battery_level < 50 ? 'medium' : 'high');
+          const displayName = (t.tablet_label && String(t.tablet_label).trim()) ? String(t.tablet_label).trim() : (t.device_id ? (t.device_id.length > 24 ? t.device_id.substring(0, 22) + '…' : t.device_id) : '—');
+          const colorHex = t.tabletColorHex || '#6b7280';
+          const statusClass = typeof getStatusClass === 'function' ? getStatusClass : function() { return 'status-neutral'; };
+        %>
+        <div class="tablet-card" data-device-id="<%= (t.device_id || '').replace(/"/g, '&quot;') %>" <%= online && lowBattery ? 'style="border-color: rgba(239, 68, 68, 0.3);"' : '' %>>
+          <div class="tablet-header">
+            <div class="tablet-judge" style="display: flex; align-items: center; gap: 0.5rem;">
+              <div style="width: 2rem; height: 2rem; border-radius: 50%; background: <%= colorHex %>; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-weight: 600;"><%= displayName %></div>
+                <div class="font-mono" style="font-size: 0.625rem; color: var(--text-muted);"><%= t.device_id ? (t.device_id.length > 28 ? t.device_id.substring(0, 26) + '…' : t.device_id) : '—' %></div>
+              </div>
+            </div>
+            <span class="badge tablet-status-badge <%= online ? 'badge-online' : 'badge-offline' %> <%= statusClass('online', online) %>"><% if (online) { %><span class="badge-dot pulse"></span><% } %><%= online ? 'ONLINE' : 'OFFLINE' %></span>
+          </div>
+          <div class="tablet-info">
+            <div class="tablet-row">
+              <span class="tablet-label">Battery</span>
+              <% if (online && t.battery_level != null) { %>
+              <div class="tablet-telemetry-battery flex items-center gap-2">
+                <div class="progress-bar"><div class="progress-fill <%= batteryClass %>" style="width: <%= t.battery_level %>%;"></div></div>
+                <span class="<%= statusClass('battery', t.battery_level, { online }) %> font-bold"><%= t.battery_level %>%</span>
+              </div>
+              <% } else { %><span class="tablet-telemetry-battery tablet-value status-neutral">—</span><% } %>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">Charging</span>
+              <span class="tablet-telemetry-charging tablet-value status-neutral"><% if (online) { %><%= t.charging ? 'Yes' : 'No' %><% } else { %>—<% } %></span>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">IP Address</span>
+              <span class="tablet-telemetry-ip tablet-value font-mono status-neutral"><% if (online) { %><%= t.ip_address || '—' %><% } else { %>—<% } %></span>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">Latency</span>
+              <span class="tablet-telemetry-latency tablet-value <%= statusClass('latency', t.latency_ms, { online }) %>"><% if (online) { %><%= t.latency_ms != null ? t.latency_ms + 'ms' : '—' %><% } else { %>—<% } %></span>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">App</span>
+              <span class="tablet-telemetry-app-active tablet-value <%= statusClass('app_active', t.app_active, { online }) %>"><% if (online) { %><%= t.app_active === true ? 'Active' : (t.app_active === false ? 'Inactive' : '—') %><% } else { %>—<% } %></span>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">Last Seen</span>
+              <span class="tablet-value"><%= t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '—' %></span>
+            </div>
+          </div>
+          <a href="/admin/tablets/<%= t.id %>" class="btn btn-secondary btn-sm w-full mt-4" style="justify-content: center;">View Details</a>
+        </div>
+        <% }); %>
+      </div>
+    <% } %>
+  </main>
+  <%- include('../partials/tablet-status-helper') %>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+(function() {
+  var socket = io('/admin', { path: '/socket.io' });
+  function getSc(field, value, opts) {
+    return (window.TabletStatus && window.TabletStatus.getStatusClass) ? window.TabletStatus.getStatusClass(field, value, opts) : 'status-neutral';
+  }
+  function updateFromTabletsState(state) {
+    if (!state || !state.stats) return;
+    var s = state.stats;
+    var cards = document.querySelectorAll('.stats-grid .stat-value');
+    if (cards.length >= 4) {
+      cards[0].textContent = s.total || 0;
+      cards[1].textContent = s.online || 0;
+      cards[2].textContent = s.offline || 0;
+      cards[3].textContent = s.lowBattery || 0;
+    }
+    if (state.tablets && state.tablets.length) {
+      var cards = document.querySelectorAll('.tablet-card[data-device-id]');
+      state.tablets.forEach(function(t) {
+        var devId = t.device_id || '';
+        for (var i = 0; i < cards.length; i++) {
+          if (cards[i].getAttribute('data-device-id') === devId) {
+            var isOnline = t.isLiveOnline === true;
+            var badge = cards[i].querySelector('.tablet-status-badge');
+            if (badge) {
+              badge.className = 'badge tablet-status-badge ' + (isOnline ? 'badge-online' : 'badge-offline') + ' ' + getSc('online', isOnline);
+              badge.innerHTML = (isOnline ? '<span class="badge-dot pulse"></span>' : '') + (isOnline ? 'ONLINE' : 'OFFLINE');
+            }
+            if (!isOnline) {
+              cards[i].style.borderColor = '';
+              var bat = cards[i].querySelector('.tablet-telemetry-battery');
+              if (bat) {
+                bat.className = 'tablet-telemetry-battery tablet-value status-neutral';
+                bat.innerHTML = '';
+                bat.textContent = '—';
+              }
+              var ch = cards[i].querySelector('.tablet-telemetry-charging');
+              if (ch) {
+                ch.className = 'tablet-telemetry-charging tablet-value status-neutral';
+                ch.textContent = '—';
+              }
+              var ip = cards[i].querySelector('.tablet-telemetry-ip');
+              if (ip) {
+                ip.className = 'tablet-telemetry-ip tablet-value font-mono status-neutral';
+                ip.textContent = '—';
+              }
+              var lat = cards[i].querySelector('.tablet-telemetry-latency');
+              if (lat) {
+                lat.className = 'tablet-telemetry-latency tablet-value status-neutral';
+                lat.textContent = '—';
+              }
+              var aa = cards[i].querySelector('.tablet-telemetry-app-active');
+              if (aa) {
+                aa.className = 'tablet-telemetry-app-active tablet-value status-neutral';
+                aa.textContent = '—';
+              }
+            } else {
+              var lat2 = cards[i].querySelector('.tablet-telemetry-latency');
+              if (lat2) {
+                lat2.textContent = (t.latency_ms != null && t.latency_ms !== '') ? (String(t.latency_ms) + 'ms') : '—';
+                lat2.className = 'tablet-telemetry-latency tablet-value ' + getSc('latency', t.latency_ms, { online: true });
+              }
+              var aa2 = cards[i].querySelector('.tablet-telemetry-app-active');
+              if (aa2) {
+                if (t.app_active === true) { aa2.textContent = 'Active'; aa2.className = 'tablet-telemetry-app-active tablet-value ' + getSc('app_active', true, { online: true }); }
+                else if (t.app_active === false) { aa2.textContent = 'Inactive'; aa2.className = 'tablet-telemetry-app-active tablet-value ' + getSc('app_active', false, { online: true }); }
+                else { aa2.textContent = '—'; aa2.className = 'tablet-telemetry-app-active tablet-value status-neutral'; }
+              }
+            }
+            break;
+          }
+        }
+      });
+    }
+  }
+  socket.on('tablets_state', updateFromTabletsState);
+  socket.on('connect', function() { socket.emit('request_state'); });
+})();
+  </script>
+  <%- include('../partials/admin-notifications') %>
+</body>
+</html>
