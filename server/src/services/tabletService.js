@@ -16,9 +16,24 @@ function ensureTabletColorColumn() {
       db.exec("ALTER TABLE tablets ADD COLUMN tablet_color TEXT DEFAULT ''");
       console.log('[TABLET_COLOR_MIGRATION]=added tablet_color column');
     }
+    // Assign colors to tablets that have none yet
     const rows = db.prepare("SELECT id FROM tablets WHERE tablet_color IS NULL OR TRIM(tablet_color) = '' ORDER BY id ASC").all();
     const upd = db.prepare("UPDATE tablets SET tablet_color = ?, updated_at = datetime('now') WHERE id = ?");
     rows.forEach((r, i) => upd.run(TABLET_COLOR_KEYS[i % TABLET_COLOR_KEYS.length] || 'red', r.id));
+
+    // Fix tablets that all share the same color (caused by the registration bug
+    // where every new tablet was inserted with TABLET_COLOR_KEYS[0]='red').
+    const all = db.prepare("SELECT id, tablet_color FROM tablets ORDER BY id ASC").all();
+    if (all.length > 1) {
+      const colors = all.map((t) => (t.tablet_color || '').trim().toLowerCase());
+      const allSame = colors.every((c) => c === colors[0]);
+      const hasDups = allSame || colors.some((c, i) => colors.indexOf(c) !== i);
+      if (hasDups) {
+        const fix = db.prepare("UPDATE tablets SET tablet_color = ?, updated_at = datetime('now') WHERE id = ?");
+        all.forEach((r, i) => fix.run(TABLET_COLOR_KEYS[i % TABLET_COLOR_KEYS.length] || 'red', r.id));
+        console.log(`[TABLET_COLOR_FIX]=reassigned colors for ${all.length} tablets`);
+      }
+    }
   } catch (e) {
     console.log(`[TABLET_COLOR_MIGRATION_ERROR]=${e.message}`);
   }
@@ -176,8 +191,8 @@ function register(payload) {
   if (judgeLetter) clearOldJudgeAssignmentForOtherTablets(judgeLetter, deviceId);
   db.prepare(`
     INSERT INTO tablets (device_id, judge_name, judge_letter, judge_color, tablet_color, tablet_label)
-    VALUES (?, ?, ?, NULL, ?, ?)
-  `).run(deviceId, judgeName || null, judgeLetter || null, (TABLET_COLOR_KEYS[0] || 'red'), tabletLabel || '');
+    VALUES (?, ?, ?, NULL, NULL, ?)
+  `).run(deviceId, judgeName || null, judgeLetter || null, tabletLabel || '');
   const tabletColor = ensureTabletColorPersisted(deviceId);
   console.log(`[NEW_JUDGE_ASSIGNED]=${JSON.stringify({ deviceId, judgeLetter: judgeLetter || '', judgeName: judgeName || '', tabletColor: tabletColor || '' })}`);
   return findByDeviceId(deviceId);
