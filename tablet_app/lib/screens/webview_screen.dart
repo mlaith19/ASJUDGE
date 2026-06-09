@@ -61,9 +61,6 @@ class _WebViewScreenState extends State<WebViewScreen>
   String _foregroundState = 'foreground';
   int _adminTapCount = 0;
   Timer? _adminTapTimer;
-  int _colorTapCount = 0;
-  Timer? _colorTapTimer;
-  Timer? _repinTimer;
   bool _navigatingToSetup = false;
   String _judgeUsername = '';
   String _judgePassword = '';
@@ -94,8 +91,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _loadConfigAndWebView();
     // On Android: check permission after build; show dialog if not granted (user tap = system shows permission dialog)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final alreadyPinned = await _kioskService.isLockTaskMode();
-      if (!alreadyPinned) _kioskService.startLockTask();
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       if (!Platform.isAndroid) return;
@@ -114,8 +109,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _heartbeatPayloadTimer?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
-    _colorTapTimer?.cancel();
-    _repinTimer?.cancel();
     _kioskService.setKeepScreenOn(false);
     super.dispose();
   }
@@ -1277,66 +1270,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
   }
 
-  void _onColorTap() {
-    _colorTapTimer?.cancel();
-    _colorTapCount++;
-    if (_colorTapCount >= 5) {
-      _colorTapCount = 0;
-      _showKioskMenu();
-      return;
-    }
-    _colorTapTimer = Timer(const Duration(seconds: 3), () {
-      _colorTapCount = 0;
-    });
-  }
-
-  Future<void> _showKioskMenu() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Kiosk'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('unassign'),
-            child: const Text('Unassign'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop('unlock'),
-            child: const Text('Unlock'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (result == 'unlock') {
-      await _kioskService.stopLockTask();
-      _repinTimer?.cancel();
-      _repinTimer = Timer(const Duration(seconds: 15), () {
-        _kioskService.startLockTask();
-      });
-    } else if (result == 'unassign') {
-      _repinTimer?.cancel();
-      await _kioskService.stopLockTask();
-      await widget.storage.clearJudgeSelection();
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => SetupScreen(
-            storage: widget.storage,
-            api: widget.api,
-            deviceId: widget.deviceId,
-            returnToWebView: false,
-          ),
-        ),
-        (_) => false,
-      );
-    }
-  }
-
   Future<void> _showAdminMenu() async {
     final isAdmin = _isAdminMode;
     final go = await showDialog<bool>(
@@ -1490,17 +1423,6 @@ class _WebViewScreenState extends State<WebViewScreen>
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _onAdminTap,
-                child: const SizedBox.expand(),
-              ),
-            ),
-            Positioned(
-              top: 12,
-              left: 12,
-              width: 39,
-              height: 39,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _onColorTap,
                 child: const SizedBox.expand(),
               ),
             ),
