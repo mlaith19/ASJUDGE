@@ -1326,27 +1326,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _loadConfigAndWebView();
   }
 
-  /// Pull-to-refresh: reload current page or load target URL if blank.
-  Future<void> _onPullToRefresh() async {
-    final c = _controller;
-    final target = _currentTargetUrl;
-    if (c == null) return;
-    try {
-      final current = await c.currentUrl();
-      if (_isBlankOrInvalidUrl(current) && target != null && target.trim().isNotEmpty && isValidHttpUrl(target.trim())) {
-        if (mounted) setState(() { _loading = true; _error = null; });
-        await c.loadRequest(Uri.parse(target.trim()));
-      } else {
-        await c.reload();
-      }
-    } catch (_) {
-      if (target != null && target.trim().isNotEmpty && isValidHttpUrl(target.trim())) {
-        if (mounted) setState(() { _loading = true; });
-        await c.loadRequest(Uri.parse(target.trim()));
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
 
   Future<void> _onPopInvoked(bool didPop) async {
     if (didPop) return;
@@ -1434,15 +1413,8 @@ class _WebViewScreenState extends State<WebViewScreen>
             if (_currentTargetUrl != null && _controller != null)
               Stack(
                 children: [
-                  RefreshIndicator(
-                    onRefresh: _onPullToRefresh,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: SizedBox(
-                        height: MediaQuery.sizeOf(context).height,
-                        child: WebViewWidget(controller: _controller!),
-                      ),
-                    ),
+                  Positioned.fill(
+                    child: WebViewWidget(controller: _controller!),
                   ),
                   Positioned(
                     top: 0,
