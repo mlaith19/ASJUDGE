@@ -100,6 +100,65 @@
         </div>
       </form>
     </div>
+    <div class="settings-section" style="margin-top: 2rem;">
+      <h3>Telegram Notifications</h3>
+      <p>Receive a Telegram message on your phone whenever a judge connects, disconnects, is assigned, logs in/out, or has a low battery.</p>
+
+      <div style="background: var(--bg-card, #1e293b); border: 1px solid var(--border, #334155); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; font-size: 0.85rem; line-height: 1.7;">
+        <strong>How to set up (one time):</strong>
+        <ol style="margin: 0.5rem 0 0 1.2rem; padding: 0;">
+          <li>Open Telegram and search for <strong>@BotFather</strong></li>
+          <li>Send <code>/newbot</code>, choose a name, and copy the <strong>Bot Token</strong></li>
+          <li>Search for your new bot in Telegram and send it any message (e.g. <code>hello</code>)</li>
+          <li>Open this URL in a browser to find your <strong>Chat ID</strong>:<br>
+            <code style="word-break:break-all;">https://api.telegram.org/bot<strong>TOKEN</strong>/getUpdates</code><br>
+            Look for <code>"chat":{"id": <strong>123456789</strong>}</code> — that number is your Chat ID</li>
+          <li>Paste the Bot Token and Chat ID below, save, then click <strong>Send test</strong></li>
+        </ol>
+      </div>
+
+      <form method="post" action="/admin/settings/update">
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Bot Token</span>
+            <small>From @BotFather (e.g. 123456:ABC-DEF...)</small>
+          </div>
+          <input type="password" id="telegram_bot_token" name="telegram_bot_token"
+            class="form-input"
+            value="<%= (settings && settings.telegram_bot_token) || '' %>"
+            placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+            autocomplete="off"
+            style="width: 100%; max-width: 340px;">
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">
+            <span>Chat ID</span>
+            <small>Your personal Telegram Chat ID (a number)</small>
+          </div>
+          <input type="text" id="telegram_chat_id" name="telegram_chat_id"
+            class="form-input"
+            value="<%= (settings && settings.telegram_chat_id) || '' %>"
+            placeholder="123456789"
+            maxlength="100"
+            style="width: 100%; max-width: 200px;">
+        </div>
+        <div class="flex justify-end" style="margin-top: 1.5rem; gap: 0.75rem;">
+          <button type="submit" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save
+          </button>
+        </div>
+      </form>
+      <form method="post" action="/admin/settings/telegram-test" style="margin-top: 0.75rem;">
+        <div class="flex justify-end">
+          <button type="submit" class="btn" style="background: var(--accent-sky, #0ea5e9); color: #fff;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            Send test message
+          </button>
+        </div>
+      </form>
+    </div>
+
   </main>
   <script src="/socket.io/socket.io.js"></script>
   <%- include('../partials/admin-notifications') %>

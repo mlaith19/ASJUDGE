@@ -7,6 +7,7 @@ const { Server } = require('socket.io');
 const tabletService = require('./services/tabletService');
 const judgesService = require('./services/judgesService');
 const settingsService = require('./services/settingsService');
+const telegramService = require('./services/telegramService');
 const config = require('./config');
 const { getHex } = require('./constants/judgeColors');
 
@@ -418,6 +419,7 @@ function notifyAdminTablets(eventType, data = {}) {
     sendCommandToTablet(deviceId, 'admin_alert', payload);
   });
   log(`admin_alert [${eventType}] sent to ${adminTabletDeviceIds.size} admin tablet(s)`);
+  try { telegramService.notify(eventType, data); } catch (_) {}
 }
 
 function sendCommandToTablet(deviceId, action, payload = null) {

@@ -305,11 +305,35 @@ router.post('/settings/update', requireAuth, (req, res) => {
       expected_wifi_ssid: req.body.expected_wifi_ssid,
       kiosk_mode_enabled_default: req.body.kiosk_mode_enabled_default,
       admin_tablet_alerts_enabled: req.body.admin_tablet_alerts_enabled,
+      telegram_bot_token: req.body.telegram_bot_token,
+      telegram_chat_id: req.body.telegram_chat_id,
     });
     req.session.flash = { type: 'success', message: 'Settings updated' };
     if (socketService.pushDashboardToAdmin) socketService.pushDashboardToAdmin('settings_changed');
   } catch (err) {
     req.session.flash = { type: 'error', message: err.message || 'Update failed' };
+  }
+  res.redirect('/admin/settings');
+});
+
+router.post('/settings/telegram-test', requireAuth, async (req, res) => {
+  const settings = settingsService.get();
+  const token = (settings.telegram_bot_token || '').trim();
+  const chatId = (settings.telegram_chat_id || '').trim();
+  if (!token || !chatId) {
+    req.session.flash = { type: 'error', message: 'Save Bot Token and Chat ID first before testing.' };
+    return res.redirect('/admin/settings');
+  }
+  try {
+    const telegramService = require('../../services/telegramService');
+    const result = await telegramService.sendMessage(token, chatId, 'AS Judge: test notification sent successfully.');
+    if (result.ok) {
+      req.session.flash = { type: 'success', message: 'Test message sent to Telegram!' };
+    } else {
+      req.session.flash = { type: 'error', message: `Telegram error: ${result.description || result.error || 'Unknown error'}` };
+    }
+  } catch (err) {
+    req.session.flash = { type: 'error', message: `Failed: ${err.message}` };
   }
   res.redirect('/admin/settings');
 });
