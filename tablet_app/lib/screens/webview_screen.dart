@@ -61,6 +61,8 @@ class _WebViewScreenState extends State<WebViewScreen>
   String _foregroundState = 'foreground';
   int _adminTapCount = 0;
   Timer? _adminTapTimer;
+  int _colorTapCount = 0;
+  Timer? _colorTapTimer;
   bool _navigatingToSetup = false;
   String _judgeUsername = '';
   String _judgePassword = '';
@@ -110,6 +112,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     _heartbeatPayloadTimer?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
+    _colorTapTimer?.cancel();
     _kioskService.setKeepScreenOn(false);
     super.dispose();
   }
@@ -1271,6 +1274,19 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
   }
 
+  void _onColorTap() {
+    _colorTapTimer?.cancel();
+    _colorTapCount++;
+    if (_colorTapCount >= 8) {
+      _colorTapCount = 0;
+      _kioskService.stopLockTask();
+      return;
+    }
+    _colorTapTimer = Timer(const Duration(seconds: 3), () {
+      _colorTapCount = 0;
+    });
+  }
+
   Future<void> _showAdminMenu() async {
     final isAdmin = _isAdminMode;
     final go = await showDialog<bool>(
@@ -1412,6 +1428,17 @@ class _WebViewScreenState extends State<WebViewScreen>
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: _onAdminTap,
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    width: 39,
+                    height: 39,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _onColorTap,
                       child: const SizedBox.expand(),
                     ),
                   ),
