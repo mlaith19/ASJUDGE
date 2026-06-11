@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+let bcrypt; try { bcrypt = require('bcrypt'); } catch { bcrypt = require('bcryptjs'); }
 const db = require('../db/connection');
 
 function findByUsername(username) {

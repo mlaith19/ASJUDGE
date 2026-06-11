@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+let bcrypt; try { bcrypt = require('bcrypt'); } catch { bcrypt = require('bcryptjs'); }
 const Admin = require('../models/Admin');
 
 function loginPage(req, res) {

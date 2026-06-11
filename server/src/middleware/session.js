@@ -1,15 +1,20 @@
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
-const path = require('path');
-const config = require('../config');
+const path    = require('path');
+const config  = require('../config');
 
-const dataDir = path.isAbsolute(config.databasePath)
-  ? path.dirname(config.databasePath)
-  : path.join(process.cwd(), path.dirname(config.databasePath));
-const store = new SQLiteStore({ db: 'sessions.db', dir: dataDir });
+let store;
+try {
+  const SQLiteStore = require('connect-sqlite3')(session);
+  const dataDir = path.isAbsolute(config.databasePath)
+    ? path.dirname(config.databasePath)
+    : path.join(process.cwd(), path.dirname(config.databasePath));
+  store = new SQLiteStore({ db: 'sessions.db', dir: dataDir });
+} catch {
+  store = undefined; // MemoryStore fallback (sessions lost on restart — fine for single admin)
+}
 
 module.exports = session({
-  store,
+  ...(store ? { store } : {}),
   secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,

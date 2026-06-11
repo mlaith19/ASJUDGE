@@ -1,5 +1,5 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-const bcrypt = require('bcrypt');
+let bcrypt; try { bcrypt = require('bcrypt'); } catch { bcrypt = require('bcryptjs'); }
 const config = require('../config');
 
 require('./init');
