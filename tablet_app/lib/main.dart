@@ -50,6 +50,7 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _kioskService.setKeepScreenOn(true);
       await Future.delayed(const Duration(milliseconds: 400));
       final alreadyPinned = await _kioskService.isLockTaskMode();
       if (!alreadyPinned) await _kioskService.startLockTask();
@@ -58,6 +59,7 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
 
   @override
   void dispose() {
+    _kioskService.setKeepScreenOn(false);
     _colorTapTimer?.cancel();
     _repinTimer?.cancel();
     super.dispose();

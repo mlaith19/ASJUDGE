@@ -109,7 +109,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _heartbeatPayloadTimer?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
-    _kioskService.setKeepScreenOn(false);
     super.dispose();
   }
 
