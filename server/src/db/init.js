@@ -106,6 +106,8 @@ if (singleDb) {
   try { db.exec("ALTER TABLE tablets ADD COLUMN tablet_color TEXT DEFAULT ''"); } catch (_) {}
   // Migration: add admin_tablet_alerts_enabled to settings.
   try { db.exec("ALTER TABLE settings ADD COLUMN admin_tablet_alerts_enabled INTEGER DEFAULT 1"); } catch (_) {}
+  // Migration: add judge_type column (JUDGE, RG, DC, SPEAKER, SCREEN, ADMIN).
+  try { db.exec("ALTER TABLE judges ADD COLUMN judge_type TEXT DEFAULT 'JUDGE'"); } catch (_) {}
   // Backfill: assign palette color to existing tablets that have none, ordered by id.
   const _PALETTE_KEYS = ['red','blue','green','orange','yellow','purple','pink','teal','cyan','lime','indigo','brown','gold','magenta','dark_blue'];
   const _needColor = db.prepare("SELECT id FROM tablets WHERE tablet_color IS NULL OR tablet_color = '' ORDER BY id ASC").all();

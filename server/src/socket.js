@@ -289,6 +289,8 @@ function buildJudgesState() {
     if (!key) return;
     // Active assignment only: online tablet owns the judge row.
     if (!isTabletLiveOnline(String(t.device_id || ''))) return;
+    // Tablet in setup/assign screen is not actively assigned to any judge.
+    if (tabletInSetupByDeviceId.has(String(t.device_id || ''))) return;
     if (tabletByJudgeLetter[key] && tabletByJudgeLetter[key].device_id !== t.device_id) {
       console.log(`[JUDGES_ASSIGNMENT_CONFLICT]=${JSON.stringify({ judgeLetter: key, keepDeviceId: tabletByJudgeLetter[key].device_id, dropDeviceId: t.device_id })}`);
       return;
@@ -694,6 +696,7 @@ function init(httpServer, sessionMiddleware) {
       const adminBroadcast = {
         deviceId: devId,
         tablet: tabletWithLive,
+        isInSetupMode: tabletInSetupByDeviceId.has(devId),
         payload: {
           batteryLevel: payload.batteryLevel ?? payload.battery_level,
           currentWebviewUrl: payload.currentWebviewUrl ?? payload.current_webview_url,
@@ -850,5 +853,8 @@ module.exports = {
   pushDashboardToAdmin,
   getLoginStatus: function (deviceId) {
     return lastLoginStatusByDeviceId.get(deviceId) || null;
+  },
+  isTabletInSetupMode: function (deviceId) {
+    return tabletInSetupByDeviceId.has(String(deviceId || ''));
   },
 };

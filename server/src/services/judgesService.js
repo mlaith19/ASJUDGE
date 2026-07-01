@@ -50,9 +50,11 @@ function create(data) {
     letter = getNextAvailableLetter();
   }
   if (!letter) throw new Error('No available judge letter (A–Z in use)');
+  const judgeType = ['JUDGE','RG','DC','SPEAKER','SCREEN','ADMIN'].includes((data.judge_type || '').toUpperCase())
+    ? (data.judge_type || '').toUpperCase() : 'JUDGE';
   db.prepare(
-    'INSERT INTO judges (judge_letter, judge_name, judge_color, username, password) VALUES (?, ?, ?, ?, ?)'
-  ).run(letter, name, color, username, password);
+    'INSERT INTO judges (judge_letter, judge_name, judge_color, username, password, judge_type) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(letter, name, color, username, password, judgeType);
   return getByLetter(letter);
 }
 
@@ -95,6 +97,12 @@ function update(id, data) {
   if (data.password !== undefined) {
     updates.push('password = ?');
     params.push(typeof data.password === 'string' ? data.password : '');
+  }
+  if (data.judge_type !== undefined) {
+    const t = ['JUDGE','RG','DC','SPEAKER','SCREEN','ADMIN'].includes((data.judge_type || '').toUpperCase())
+      ? (data.judge_type || '').toUpperCase() : 'JUDGE';
+    updates.push('judge_type = ?');
+    params.push(t);
   }
   if (updates.length === 0) return judge;
   params.push(id);

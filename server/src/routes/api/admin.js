@@ -23,16 +23,21 @@ const socketService = require('../../socket');
 function mapJudgeToV0(j, liveOnline = false) {
   const tablet = j.device_id ? { device_id: j.device_id } : null;
   const online = liveOnline || (!!tablet && (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(j.device_id)));
+  // Use tablet_color if the judge has an active online tablet, else gray
+  const tabletRow = j.device_id ? require('../../services/tabletService').findByDeviceId(j.device_id) : null;
+  const color = (online && tabletRow && tabletRow.tablet_color)
+    ? (getHex(tabletRow.tablet_color) || '#6b7280')
+    : '#6b7280';
   return {
     id: String(j.id),
     letter: (j.judge_letter || '').toUpperCase(),
     name: j.judge_name || '',
-    color: getHex(j.judge_color) || j.judge_color || '#22c55e',
+    color,
     username: j.username || '',
     password: '',
     status: online ? 'ONLINE' : 'OFFLINE',
     tabletId: tablet ? tablet.device_id : null,
-    judgeType: 'JUDGE',
+    judgeType: j.judge_type || 'JUDGE',
   };
 }
 
@@ -91,6 +96,7 @@ router.post('/judges', requireAuth, (req, res) => {
       judge_color: body.color,
       username: body.username,
       password: body.password || '',
+      judge_type: body.judgeType || 'JUDGE',
     });
     res.status(201).json(mapJudgeToV0({ ...judge, online: false, device_id: null }, false));
   } catch (err) {
@@ -118,6 +124,7 @@ router.patch('/judges/:id', requireAuth, (req, res) => {
     if (body.color !== undefined) payload.judge_color = body.color;
     if (body.username !== undefined) payload.username = body.username;
     if (body.password !== undefined) payload.password = body.password;
+    if (body.judgeType !== undefined) payload.judge_type = body.judgeType;
     const judge = judgesService.update(id, payload);
     const list = judgesService.listWithTabletStatus();
     const withStatus = list.find((j) => j.id === judge.id);
@@ -157,18 +164,22 @@ router.post('/tablets/:id/pending-action', requireAuth, (req, res) => {
 router.get('/tablets', requireAuth, (req, res) => {
   try {
     const tablets = tabletService.list({});
-    const v0 = tablets.map((t) => ({
-      id: t.device_id,
-      tabletDbId: t.id,
-      judgeLetter: (t.judge_letter || '').toUpperCase(),
-      judgeName: t.judge_name || '',
-      judgeColor: getHex(t.judge_color) || t.judge_color || '#22c55e',
-      status: (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(t.device_id)) ? 'ONLINE' : 'OFFLINE',
-      battery: t.battery_level != null ? t.battery_level : 0,
-      ip: t.ip_address || '',
-      lastSeen: t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '',
-      wifiName: t.wifi_ssid || null,
-    }));
+    const v0 = tablets.map((t) => {
+      const inSetup = !!(socketService.isTabletInSetupMode && socketService.isTabletInSetupMode(t.device_id));
+      return {
+        id: t.device_id,
+        tabletDbId: t.id,
+        judgeLetter: inSetup ? '' : (t.judge_letter || '').toUpperCase(),
+        judgeName: inSetup ? '' : (t.judge_name || ''),
+        judgeColor: getHex(t.tablet_color) || '#6b7280',
+        status: (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(t.device_id)) ? 'ONLINE' : 'OFFLINE',
+        battery: t.battery_level != null ? t.battery_level : 0,
+        ip: t.ip_address || '',
+        lastSeen: t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '',
+        wifiName: t.wifi_ssid || null,
+        isInSetupMode: inSetup,
+      };
+    });
     res.json(v0);
   } catch (err) {
     res.status(500).json({ error: err.message || 'Failed' });
