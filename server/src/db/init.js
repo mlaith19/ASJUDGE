@@ -206,6 +206,7 @@ if (singleDb) {
       judge_letter TEXT UNIQUE NOT NULL,
       judge_name TEXT DEFAULT '',
       judge_color TEXT DEFAULT '',
+      judge_type TEXT DEFAULT 'JUDGE',
       username TEXT DEFAULT '',
       password TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
@@ -214,6 +215,7 @@ if (singleDb) {
     CREATE INDEX IF NOT EXISTS idx_judges_letter ON judges(judge_letter);
   `);
   try { dbJudges.exec("ALTER TABLE settings ADD COLUMN admin_tablet_alerts_enabled INTEGER DEFAULT 1"); } catch (_) {}
+  try { dbJudges.exec("ALTER TABLE judges ADD COLUMN judge_type TEXT DEFAULT 'JUDGE'"); } catch (_) {}
   dbJudges.close();
   console.log('Tablets DB at', config.databaseTabletsPath);
   console.log('Judges DB at', config.databaseJudgesPath);

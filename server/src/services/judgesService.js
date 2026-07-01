@@ -152,6 +152,7 @@ function listWithTabletStatus() {
       online,
       tablet_id: tablet ? tablet.id : null,
       device_id: tablet ? tablet.device_id : null,
+      tablet_color: tablet ? tablet.tablet_color : null,
     });
   }
   return result;

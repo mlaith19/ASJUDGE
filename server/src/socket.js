@@ -342,11 +342,12 @@ function buildJudgesState() {
   console.log(`[JUDGES_STATE_DEVICE_TO_JUDGE]=${JSON.stringify(deviceToJudge)}`);
 
   // Tablets that are online but not assigned to any judge — available for ASSIGN
+  // Exclude setup-mode tablets: they are about to self-assign and should not be pre-empted.
   const assignedDevIds = new Set(rows.filter(r => r.current_tablet_id).map(r => r.current_tablet_id));
   const availableTablets = Object.values(byDeviceId)
     .filter(t => {
       const did = String(t.device_id || '');
-      return did && isTabletLiveOnline(did) && !assignedDevIds.has(did);
+      return did && isTabletLiveOnline(did) && !assignedDevIds.has(did) && !tabletInSetupByDeviceId.has(did);
     })
     .map(t => ({
       id: t.id,
@@ -508,6 +509,12 @@ function init(httpServer, sessionMiddleware) {
     pingInterval: 5000,
   });
 
+  // Re-populate setup-mode set from DB (survives server restart).
+  try {
+    const setupTablets = tabletService.list({}).filter(t => t.foreground_state === 'setup_screen');
+    setupTablets.forEach(t => tabletInSetupByDeviceId.add(String(t.device_id || '')));
+    if (setupTablets.length > 0) log(`Restored ${setupTablets.length} setup-mode tablets from DB`);
+  } catch (_) {}
 
   io.of('/tablet').on('connection', (socket) => {
     log('tablet socket connected', socket.id);
@@ -638,8 +645,16 @@ function init(httpServer, sessionMiddleware) {
       // Sync setup-screen flag from heartbeat foregroundState (handles server restart).
       try {
         const fs = (payload.foregroundState ?? payload.foreground_state ?? '').toString().toLowerCase();
-        if (fs === 'setup_screen') tabletInSetupByDeviceId.add(devId);
-        else if (fs && tabletInSetupByDeviceId.has(devId)) tabletInSetupByDeviceId.delete(devId);
+        if (fs === 'setup_screen') {
+          tabletInSetupByDeviceId.add(devId);
+        } else {
+          // Clear setup mode on any explicit non-setup foreground state, OR when the app
+          // reports a valid judge letter (meaning the user completed setup selection).
+          const hbLetter = (payload.judgeLetter ?? payload.judge_letter ?? '').toString().trim();
+          if ((fs || hbLetter) && tabletInSetupByDeviceId.has(devId)) {
+            tabletInSetupByDeviceId.delete(devId);
+          }
+        }
       } catch (_) {}
 
       const loginStatus = String(payload.loginStatus ?? payload.login_status ?? 'UNKNOWN').toUpperCase();

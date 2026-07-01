@@ -21,13 +21,9 @@ const { getHex } = require('../../constants/judgeColors');
 const socketService = require('../../socket');
 
 function mapJudgeToV0(j, liveOnline = false) {
-  const tablet = j.device_id ? { device_id: j.device_id } : null;
-  const online = liveOnline || (!!tablet && (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(j.device_id)));
-  // Use tablet_color if the judge has an active online tablet, else gray
-  const tabletRow = j.device_id ? require('../../services/tabletService').findByDeviceId(j.device_id) : null;
-  const color = (online && tabletRow && tabletRow.tablet_color)
-    ? (getHex(tabletRow.tablet_color) || '#6b7280')
-    : '#6b7280';
+  const online = liveOnline || (!!(j.device_id) && (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(j.device_id)));
+  const rawColor = j.tablet_color || (j.device_id ? (tabletService.findByDeviceId(j.device_id) || {}).tablet_color : null);
+  const color = (online && rawColor) ? (getHex(rawColor) || rawColor || '#6b7280') : '#6b7280';
   return {
     id: String(j.id),
     letter: (j.judge_letter || '').toUpperCase(),
@@ -36,7 +32,7 @@ function mapJudgeToV0(j, liveOnline = false) {
     username: j.username || '',
     password: '',
     status: online ? 'ONLINE' : 'OFFLINE',
-    tabletId: tablet ? tablet.device_id : null,
+    tabletId: j.device_id || null,
     judgeType: j.judge_type || 'JUDGE',
   };
 }
@@ -171,7 +167,7 @@ router.get('/tablets', requireAuth, (req, res) => {
         tabletDbId: t.id,
         judgeLetter: inSetup ? '' : (t.judge_letter || '').toUpperCase(),
         judgeName: inSetup ? '' : (t.judge_name || ''),
-        judgeColor: getHex(t.tablet_color) || '#6b7280',
+        judgeColor: getHex(t.tablet_color) || t.tablet_color || '#6b7280',
         status: (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(t.device_id)) ? 'ONLINE' : 'OFFLINE',
         battery: t.battery_level != null ? t.battery_level : 0,
         ip: t.ip_address || '',
