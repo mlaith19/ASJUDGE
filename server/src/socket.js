@@ -510,10 +510,14 @@ function init(httpServer, sessionMiddleware) {
   });
 
   // Re-populate setup-mode set from DB (survives server restart).
+  // Only flag tablets that are on the setup screen AND have no judge assignment — a tablet
+  // that was previously assigned should NOT be treated as setup-mode on restart.
   try {
-    const setupTablets = tabletService.list({}).filter(t => t.foreground_state === 'setup_screen');
+    const setupTablets = tabletService.list({}).filter(t =>
+      t.foreground_state === 'setup_screen' && !(t.judge_letter || '').toString().trim()
+    );
     setupTablets.forEach(t => tabletInSetupByDeviceId.add(String(t.device_id || '')));
-    if (setupTablets.length > 0) log(`Restored ${setupTablets.length} setup-mode tablets from DB`);
+    if (setupTablets.length > 0) log(`Restored ${setupTablets.length} unassigned setup-mode tablets from DB`);
   } catch (_) {}
 
   io.of('/tablet').on('connection', (socket) => {
@@ -550,8 +554,15 @@ function init(httpServer, sessionMiddleware) {
       tabletSockets.set(devId, socket);
       socket.deviceId = devId;
       lastHeartbeatByDeviceId.set(devId, Date.now());
-      // Track whether tablet is on the setup/assign screen (registered with no judge letter).
-      if (!judgeLetter) {
+      // Track whether tablet is on the setup/assign screen.
+      // If the payload has no judgeLetter, fall back to the DB value — the Flutter app
+      // may reconnect without sending its assignment (e.g. after a server restart), but the
+      // DB retains the last known assignment, so we should not flag it as setup-mode.
+      const dbTabletForSetup = tabletService.findByDeviceId(devId);
+      const dbJudgeLetter = (dbTabletForSetup && dbTabletForSetup.judge_letter)
+        ? dbTabletForSetup.judge_letter.trim().toUpperCase() : '';
+      const effectiveJudgeLetter = judgeLetter || dbJudgeLetter;
+      if (!effectiveJudgeLetter) {
         tabletInSetupByDeviceId.add(devId);
       } else {
         tabletInSetupByDeviceId.delete(devId);
@@ -871,5 +882,18 @@ module.exports = {
   },
   isTabletInSetupMode: function (deviceId) {
     return tabletInSetupByDeviceId.has(String(deviceId || ''));
+  },
+  getSetupModeDevices: function () {
+    return Array.from(tabletInSetupByDeviceId);
+  },
+  getLiveOnlineDevices: function () {
+    const result = [];
+    tabletSockets.forEach((socket, devId) => {
+      if (socket && socket.connected) {
+        const last = lastHeartbeatByDeviceId.get(devId);
+        result.push({ deviceId: devId, lastHeartbeat: last ? new Date(last).toISOString() : null, connected: true });
+      }
+    });
+    return result;
   },
 };

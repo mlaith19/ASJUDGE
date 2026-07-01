@@ -191,6 +191,29 @@ router.get('/dashboard-state', requireAuth, (req, res) => {
   }
 });
 
+router.get('/debug/judges-state', requireAuth, (req, res) => {
+  try {
+    const state = socketService.buildJudgesState ? socketService.buildJudgesState() : null;
+    const dbJudges = require('../../services/judgesService').listWithTabletStatus();
+    res.json({
+      judgesState: state,
+      dbJudges: dbJudges.map(j => ({
+        id: j.id,
+        letter: j.judge_letter,
+        name: j.judge_name,
+        device_id: j.device_id,
+        online: j.online,
+        tablet_color: j.tablet_color,
+        isLiveOnline: j.device_id ? !!(socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(j.device_id)) : false,
+      })),
+      setupModeDevices: socketService.getSetupModeDevices ? socketService.getSetupModeDevices() : [],
+      liveOnlineDevices: socketService.getLiveOnlineDevices ? socketService.getLiveOnlineDevices() : [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed' });
+  }
+});
+
 router.get('/settings', requireAuth, (req, res) => {
   try {
     const s = settingsService.get();
