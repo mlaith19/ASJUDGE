@@ -40,3 +40,11 @@ tablet_app/android/key.properties
 
 # Claude
 .claude/
+
+# Built APKs: the apks/ folder is the LOCAL archive that feeds the download
+# list in the admin UI. Each build is ~52MB and git keeps every one of them
+# forever, so they stay out of the repo. apks/README.md is tracked.
+apks/*.apk
+
+# Automatic backups made before an edit (icon swap, gradle fixes).
+*.bak-*
