@@ -40,7 +40,10 @@ function get() {
 
 function update(data) {
   const globalUrl = data.global_webview_url != null ? sanitizeUrl(String(data.global_webview_url)) : undefined;
-  if (globalUrl !== undefined && globalUrl !== '' && !isValidHttpUrl(globalUrl)) {
+  // 'auto' is a valid value, not a URL: it tells the server to hand out its own
+  // LAN address so the tablets survive a DHCP change. See utils/lanUrl.js.
+  const isAuto = globalUrl !== undefined && globalUrl.trim().toLowerCase() === 'auto';
+  if (globalUrl !== undefined && globalUrl !== '' && !isAuto && !isValidHttpUrl(globalUrl)) {
     throw new Error('Invalid global_webview_url');
   }
   const interval = data.polling_interval_seconds != null

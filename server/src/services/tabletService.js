@@ -295,11 +295,21 @@ function getConfig(deviceId) {
   const tablet = findByDeviceId(deviceId);
   if (!tablet) throw new Error('Tablet not registered');
 
-  const targetWebviewUrl = (tablet.custom_webview_url && tablet.custom_webview_url.trim() !== '')
+  // 'auto' (or empty) resolves to this server's own LAN address, so the tablets
+  // follow the machine when DHCP changes its IP. See utils/lanUrl.js.
+  const { resolveWebviewUrl, withPath, ADMIN_VIEW_PATH } = require('../utils/lanUrl');
+  const hasCustomUrl = !!(tablet.custom_webview_url && tablet.custom_webview_url.trim() !== '');
+  const configuredUrl = hasCustomUrl
     ? tablet.custom_webview_url.trim()
-    : (settings.global_webview_url && settings.global_webview_url.trim() !== ''
-      ? settings.global_webview_url.trim()
-      : '');
+    : (settings.global_webview_url || '');
+  const resolvedUrl = resolveWebviewUrl(configuredUrl);
+  // An Admin View tablet exists to show the dashboard, so it does not get the
+  // judge login screen. An explicit per-tablet URL still wins - if someone set
+  // one by hand they meant it.
+  const isAdminView = (tablet.judge_letter || '').toString().trim().toUpperCase() === '__ADMIN__';
+  const targetWebviewUrl = (isAdminView && !hasCustomUrl)
+    ? withPath(resolvedUrl, ADMIN_VIEW_PATH)
+    : resolvedUrl;
 
   const forceReload = !!tablet.force_reload;
   if (forceReload) {

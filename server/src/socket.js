@@ -179,9 +179,15 @@ function buildDashboardState() {
       if (reported === 'LOGGED_IN' || reported === 'LOGGED_OUT') {
         loginStatus = reported;
       } else {
-        const targetUrl = (tablet.custom_webview_url && tablet.custom_webview_url.trim())
-          ? tablet.custom_webview_url.trim()
-          : (settings && settings.global_webview_url ? settings.global_webview_url.trim() : '');
+        // Same resolution as the config the tablet was given, otherwise 'auto'
+        // would compare the tablet's real URL against the literal word 'auto'
+        // and every judge would read as LOGGED_OUT.
+        const { resolveWebviewUrl } = require('./utils/lanUrl');
+        const targetUrl = resolveWebviewUrl(
+          (tablet.custom_webview_url && tablet.custom_webview_url.trim())
+            ? tablet.custom_webview_url.trim()
+            : (settings && settings.global_webview_url ? settings.global_webview_url : '')
+        );
         loginStatus = computeLoginStatusFromUrls(tablet.current_webview_url, targetUrl);
       }
     }
@@ -405,14 +411,38 @@ function broadcastToAdmin(event, data) {
 }
 
 /**
- * Send admin_alert command to all tablets registered as Admin View (__ADMIN__),
- * but only when admin_tablet_alerts_enabled setting is on (default: on).
+ * A name for a tablet in an alert. An UNASSIGNED tablet has no judge letter at
+ * all - that used to mean no alert was produced for it, which is exactly the
+ * device you most need to hear about: one sitting on the setup screen instead
+ * of judging. Falls back letter -> sticker label -> short device id.
+ */
+function tabletDisplayLabel(tablet, deviceId) {
+  const letter = tablet ? (tablet.judge_letter || '').toString().trim() : '';
+  if (letter && letter !== '__ADMIN__') return letter;
+  const label = tablet ? (tablet.tablet_label || '').toString().trim() : '';
+  if (label) return label;
+  return String(deviceId || '').slice(0, 8) || '?';
+}
+
+/**
+ * Fan out one presence alert to every admin channel:
+ *   - Telegram                (always)
+ *   - browser admins, /admin  (always, event 'judge_alert')
+ *   - Admin View tablets      (only when admin_tablet_alerts_enabled is on)
  * @param {string} eventType - e.g. 'judge_online', 'judge_offline', 'judge_assigned'
  * @param {object} data - extra fields merged into the payload
  */
 function notifyAdminTablets(eventType, data = {}) {
   // Telegram is always sent regardless of tablet state
   try { telegramService.notify(eventType, data); } catch (_) {}
+
+  // Browser admins get every alert too, on the /admin namespace.
+  // Deliberately BEFORE the early return below: an alert must reach the admin
+  // screen even when no admin tablet is registered, and it is not muted by
+  // admin_tablet_alerts_enabled - that setting is about the tablets only.
+  try {
+    broadcastToAdmin('judge_alert', { eventType, ...data, at: Date.now() });
+  } catch (_) {}
 
   if (adminTabletDeviceIds.size === 0) return;
   try {
@@ -490,21 +520,55 @@ function onTabletDisconnected(deviceId) {
     const judgeLetter = tablet ? (tablet.judge_letter || '').trim() : '';
     if (judgeLetter && judgeLetter !== '__ADMIN__') {
       notifyAdminTablets('judge_offline', { judgeLetter, judgeName: tablet ? (tablet.judge_name || '') : '' });
+    } else {
+      // No judge assigned - report the DEVICE instead of staying silent.
+      notifyAdminTablets('tablet_offline', { tabletLabel: tabletDisplayLabel(tablet, deviceId), deviceId });
     }
   }
   broadcastToAdmin('tablet_offline', { deviceId, tablet: tabletService.findByDeviceId(deviceId) });
   pushDashboardToAdmin('tablet_disconnect');
 }
 
+/**
+ * Origins allowed to open a socket.
+ *
+ * A fixed list did not survive contact with a real show: the admin screen is
+ * opened from localhost, from 127.0.0.1 (a DIFFERENT origin to the browser),
+ * and from the machine's LAN address, which DHCP can change between shows -
+ * nobody should have to edit .env mid-show to get the dashboard back.
+ *
+ * So the rule is by network range, not by literal string: anything loopback or
+ * RFC1918-private is allowed, anything public is refused. '*' is deliberately
+ * not used - it would let any website the operator happens to have open talk
+ * to this socket.
+ */
+const PRIVATE_HOST = /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|\[::1\]|::1)$/i;
+
+function buildOriginCheck() {
+  const explicit = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return function isAllowedOrigin(origin, cb) {
+    // No Origin header at all: the Flutter tablets are not browsers and never
+    // send one. Blocking these would take every tablet offline at once.
+    if (!origin) return cb(null, true);
+    if (explicit.includes(origin)) return cb(null, true);
+    try {
+      if (PRIVATE_HOST.test(new URL(origin).hostname)) return cb(null, true);
+    } catch (_) {}
+    log('origin refused', origin);
+    return cb(new Error('Origin not allowed: ' + origin));
+  };
+}
+
 function init(httpServer, sessionMiddleware) {
   if (io) return io;
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
-    : ['http://localhost:3000', 'http://localhost:5000'];
 
   io = new Server(httpServer, {
     path: '/socket.io',
-    cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
+    cors: { origin: buildOriginCheck(), methods: ['GET', 'POST'] },
     pingTimeout: 10000,
     pingInterval: 5000,
   });
@@ -575,6 +639,12 @@ function init(httpServer, sessionMiddleware) {
         if (judgeLetter) {
           const judgeName = (payload.judgeName || payload.judge_name || '').toString().trim();
           notifyAdminTablets('judge_online', { judgeLetter, judgeName });
+        } else {
+          // Unassigned tablet came online (setup screen) - still worth knowing.
+          notifyAdminTablets('tablet_online', {
+            tabletLabel: tabletDisplayLabel(tabletService.findByDeviceId(devId), devId),
+            deviceId: devId,
+          });
         }
       }
       const tablet = tabletService.findByDeviceId(devId);

@@ -37,6 +37,12 @@ class WebViewScreen extends StatefulWidget {
     required this.deviceId,
   });
 
+  /// Set by the live screen while it is mounted, so the kiosk menu in main.dart
+  /// can run exactly the same logout the server's 'logout_webview' command runs
+  /// - click the page's logout, clear cookies and storage, load the login page,
+  /// and report LOGGED_OUT. Null when no WebView is on screen.
+  static Future<void> Function()? logoutHook;
+
   final StorageService storage;
   final ApiService api;
   final String deviceId;
@@ -87,6 +93,7 @@ class _WebViewScreenState extends State<WebViewScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WebViewScreen.logoutHook = _menuLogout;
     _applyFullscreen();
     _loadConfigAndWebView();
     // On Android: check permission after build; show dialog if not granted (user tap = system shows permission dialog)
@@ -106,6 +113,8 @@ class _WebViewScreenState extends State<WebViewScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Only clear the hook if it is still ours - a newer screen may have replaced it.
+    if (identical(WebViewScreen.logoutHook, _menuLogout)) WebViewScreen.logoutHook = null;
     _heartbeatPayloadTimer?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
@@ -269,22 +278,20 @@ class _WebViewScreenState extends State<WebViewScreen>
   static const String _kAdminJudgeLetter = '__ADMIN__';
   bool get _isAdminMode => (widget.storage.judgeLetter ?? '').trim() == _kAdminJudgeLetter;
 
+  late final Future<void> Function() _menuLogout = () async {
+    final target = (_currentTargetUrl ?? widget.storage.lastKnownTargetUrl ?? '').trim();
+    await _runPendingAction('logout_webview', null, targetUrl: target.isEmpty ? null : target);
+  };
+
   Future<void> _loadConfigAndWebView() async {
     final judgeLetter = (widget.storage.judgeLetter ?? '').trim();
     if (judgeLetter == _kAdminJudgeLetter) {
       _loadAdminView();
       return;
     }
-    if (judgeLetter.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'No judge selected. Complete setup first.';
-          _backendUnavailable = true;
-        });
-      }
-      return;
-    }
+    // An empty judge letter is the NORMAL state now: the tablet carries no judge
+    // identity of its own, it just shows the login page and whoever signs in is
+    // the judge. It used to stop here with 'No judge selected'.
     final storedUrl = (widget.storage.lastKnownTargetUrl ?? '').trim();
     final hasStoredTargetUrl = storedUrl.isNotEmpty && isValidHttpUrl(storedUrl);
     if (!hasStoredTargetUrl) {
@@ -910,27 +917,24 @@ class _WebViewScreenState extends State<WebViewScreen>
       }
     } catch (e) {}
   }
-  function ensureMarker() {
+  // The tablet-colour dot used to be drawn here, in the top-left corner, as a
+  // visual hint for the 5-tap kiosk gesture. It sat right next to the scoring
+  // page's own judge badge, so every tablet showed two coloured circles that
+  // did different things - the app's one and the judge's one. The gesture area
+  // is a Flutter widget and works with nothing drawn, so the marker is gone and
+  // the judge badge is the only circle on screen.
+  function removeMarker() {
     var existing = document.getElementById("judge_marker");
-    if (existing) {
-      existing.textContent = letter;
-      existing.style.backgroundColor = hex;
-      return;
-    }
-    var div = document.createElement("div");
-    div.id = "judge_marker";
-    div.textContent = letter;
-    div.style.cssText = "position:fixed;top:12px;left:12px;width:39px;height:39px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;color:white;background-color:" + hex + ";box-shadow:0 0 4px rgba(0,0,0,0.4);pointer-events:none !important;z-index:9999;";
-    if (document.body) document.body.appendChild(div);
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
   }
   hideToggle();
   hideLogout();
-  ensureMarker();
+  removeMarker();
   if (typeof MutationObserver !== "undefined") {
     var obs = new MutationObserver(function() {
       hideToggle();
       hideLogout();
-      if (!document.getElementById("judge_marker")) ensureMarker();
+      removeMarker();
     });
     obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
   }

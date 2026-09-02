@@ -37,7 +37,14 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.tablet_app"
+        // A different id from the build already on the tablets, so this installs
+        // beside it instead of over it. It is also a real domain rather than the
+        // template's com.example, which Play refuses and which collides with every
+        // other project that never changed it.
+        //
+        // A new id means a new app to Android: its own storage, its own settings,
+        // and a fresh deviceId - each tablet registers in the admin panel again.
+        applicationId "net.mlsystems.arabian.judge"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()

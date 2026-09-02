@@ -19,7 +19,7 @@ class BackendDiscoveryService {
     return '${parts[0]}.${parts[1]}.${parts[2]}.';
   }
 
-  /// Preferred hosts only: x.x.x.1, .10, .50, ... (port 5000).
+  /// Preferred hosts only: x.x.x.1, .10, .50, ... (port 5050).
   static List<String> getPreferredCandidates(String subnet) {
     final base = subnet.endsWith('.') ? subnet : '$subnet.';
     final urls = <String>[];

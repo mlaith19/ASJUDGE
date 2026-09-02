@@ -2,9 +2,9 @@
 /// Backend must respond to GET /api/ping with { "ok": true, "service": "judge-backend" }.
 const String kPingPath = '/api/ping';
 const String kExpectedServiceName = 'judge-backend';
-/// Backend runs on port 5000 only.
-const List<int> kDiscoveryPorts = [5000];
-const int kDiscoveryPort = 5000;
+/// Backend runs on port 5050 only.
+const List<int> kDiscoveryPorts = [5050];
+const int kDiscoveryPort = 5050;
 const Duration kProbeTimeout = Duration(milliseconds: 800);
 const int kProbeRetries = 1;
 

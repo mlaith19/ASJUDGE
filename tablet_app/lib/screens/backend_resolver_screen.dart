@@ -5,7 +5,7 @@ import '../services/api_service.dart';
 import '../services/backend_discovery_service.dart';
 import '../services/device_info_service.dart';
 import '../utils/url_validator.dart';
-import 'setup_screen.dart';
+import 'webview_screen.dart';
 
 /// Resolves backend URL: use saved → verify; else discover on LAN; else show manual entry.
 class BackendResolverScreen extends StatefulWidget {
@@ -104,10 +104,12 @@ class _BackendResolverScreenState extends State<BackendResolverScreen> {
     if (url == null || url.isEmpty) return;
     final api = ApiService(baseUrl: url);
     if (!mounted) return;
-    // Always open Judge Selection on startup; only admin force-assignment can skip it.
+    // Straight to the WebView - the scoring login page decides who the judge is.
+    // There is no judge picker any more: a list kept on the tablet server drifted
+    // away from the judges of the active show, and the login page already knows.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => SetupScreen(
+        builder: (_) => WebViewScreen(
           storage: widget.storage,
           api: api,
           deviceId: widget.deviceId,
@@ -253,7 +255,7 @@ class _ManualBackendScreenState extends State<_ManualBackendScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Enter the backend server URL (e.g. http://192.168.1.52:5000)',
+                      'Enter the backend server URL (e.g. http://192.168.1.52:5050)',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
@@ -262,7 +264,7 @@ class _ManualBackendScreenState extends State<_ManualBackendScreen> {
                     if (widget.tabletIp != null && widget.tabletIp!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        'Tablet IP: ${widget.tabletIp} (backend is usually same subnet, e.g. http://192.168.1.XX:5000)',
+                        'Tablet IP: ${widget.tabletIp} (backend is usually same subnet, e.g. http://192.168.1.XX:5050)',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
@@ -282,7 +284,7 @@ class _ManualBackendScreenState extends State<_ManualBackendScreen> {
                       controller: _urlController,
                       decoration: const InputDecoration(
                         labelText: 'Backend URL',
-                        hintText: 'http://192.168.1.52:5000',
+                        hintText: 'http://192.168.1.52:5050',
                         border: OutlineInputBorder(),
                         filled: true,
                       ),

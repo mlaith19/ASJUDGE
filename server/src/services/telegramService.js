@@ -12,6 +12,9 @@ function _buildText(eventType, data = {}) {
     case 'judge_login':      return `Judge ${judge} logged in`;
     case 'judge_logout':     return `Judge ${judge} logged out`;
     case 'low_battery':      return `Judge ${judge} battery at ${data.batteryLevel ?? '?'}%`;
+    // Unassigned tablets: no judge to name, so the device speaks for itself.
+    case 'tablet_online':    return `Tablet ${data.tabletLabel || '?'} connected (no judge assigned)`;
+    case 'tablet_offline':   return `Tablet ${data.tabletLabel || '?'} disconnected (no judge assigned)`;
     default:                 return `Alert: ${eventType}`;
   }
 }

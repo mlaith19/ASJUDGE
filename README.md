@@ -32,7 +32,7 @@ flutter run -d <device_id>
 ```bash
 cd server
 cp .env.example .env
-# Edit .env: set PORT, SESSION_SECRET, BACKEND_BASE_URL (e.g. http://192.168.10.100:5000)
+# Edit .env: set PORT, SESSION_SECRET, BACKEND_BASE_URL (e.g. http://192.168.10.100:5050)
 npm install
 npm run init-db
 npm run migrate
@@ -40,7 +40,7 @@ npm run seed-admin
 npm start
 ```
 
-- **Admin panel:** http://localhost:5000/admin/login (או כתובת ה-LAN)
+- **Admin panel:** http://localhost:5050/admin/login (או כתובת ה-LAN)
 - **משתמש פיתוח:** `admin` / `admin123` — **רק לפיתוח; להחליף בפרודקשן.**
 - אם כבר קיים DB, להריץ פעם אחת: `npm run migrate`.
 
@@ -54,7 +54,7 @@ flutter run
 # Or build APK: flutter build apk --release
 ```
 
-- Set **backend API URL** in `lib/config/app_config.dart`: `kDefaultApiBaseUrl = 'http://192.168.10.100:5000'` (use your server’s LAN IP).
+- Set **backend API URL** in `lib/config/app_config.dart`: `kDefaultApiBaseUrl = 'http://192.168.10.100:5050'` (use your server’s LAN IP).
 - First run: complete **Setup** (Judge name, optional Tablet label). Then the app registers and opens the WebView using the URL from the admin panel.
 
 ### 3. Admin usage
@@ -96,7 +96,7 @@ tablet_app/             # Flutter Android app
 
 ## Changing LAN IP for production
 
-- **Backend:** set `BACKEND_BASE_URL` in `server/.env` to your server’s URL (e.g. `http://192.168.10.100:5000`).
+- **Backend:** set `BACKEND_BASE_URL` in `server/.env` to your server’s URL (e.g. `http://192.168.10.100:5050`).
 - **Tablet app:** set `kDefaultApiBaseUrl` in `tablet_app/lib/config/app_config.dart` to the same base URL so tablets can reach the API.
 - **WebView target URL:** set in Admin → Settings (global default) or per tablet in Dashboard → Edit tablet. No URL is hardcoded in the Flutter app; it always comes from the backend.
 

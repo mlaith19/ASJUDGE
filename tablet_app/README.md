@@ -6,7 +6,7 @@ Android tablet app that loads a WebView URL **controlled by the backend**. No We
 
 1. Set the backend API base URL in `lib/config/app_config.dart`:
    ```dart
-   const String kDefaultApiBaseUrl = 'http://192.168.10.100:5000';
+   const String kDefaultApiBaseUrl = 'http://192.168.10.100:5050';
    ```
    Use your server’s LAN IP and port.
 

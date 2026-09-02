@@ -37,5 +37,11 @@ flutter:
 flutter_launcher_icons:
   android: true
   image_path: "assets/app_logo.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/app_logo.png"
+  # The dark the logo was drawn for. A white plate behind a dark square icon
+  # would show as a ring of white around it on Android 8 and up.
+  adaptive_icon_background: "#111111"
+  # A separate, transparent layer: an adaptive icon is cropped to whatever mask
+  # the launcher uses - circle, squircle, teardrop - and only the middle 66% is
+  # guaranteed to survive. image_path above runs to the edge, so pointed at the
+  # foreground it would lose the horse's ears and the film strip on a round mask.
+  adaptive_icon_foreground: "assets/app_logo_foreground.png"

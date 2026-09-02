@@ -73,7 +73,8 @@ class Tablet {
     if (!tablet) return null;
 
     const settings = db.prepare('SELECT * FROM settings WHERE id = 1').get();
-    const targetUrl = tablet.custom_webview_url || settings.global_webview_url;
+    const { resolveWebviewUrl } = require('../utils/lanUrl');
+    const targetUrl = resolveWebviewUrl(tablet.custom_webview_url || settings.global_webview_url);
 
     return {
       targetWebviewUrl: targetUrl,
