@@ -423,18 +423,8 @@ class _WebViewScreenState extends State<WebViewScreen>
         } catch (_) {}
       }
       var loginStatus = 'UNKNOWN';
-      final targetUrl = _currentTargetUrl;
       if (mounted) {
-        loginStatus = _computeLoginStatusFromUrls(currentUrl, targetUrl);
-        if (loginStatus == 'LOGGED_OUT' &&
-            (currentUrl == null ||
-                currentUrl.trim().isEmpty ||
-                (targetUrl == null || targetUrl.trim().isEmpty))) {
-          final domStatus = await _detectLoginStatus();
-          if (domStatus == 'LOGGED_IN' || domStatus == 'LOGGED_OUT') {
-            loginStatus = domStatus;
-          }
-        }
+        loginStatus = await _resolveLoginStatus(currentUrl);
       }
       return HeartbeatTelemetry.build(
         deviceInfo: di,
@@ -652,19 +642,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       );
     }
 
-    final targetUrl = _currentTargetUrl;
-    String loginStatus = _computeLoginStatusFromUrls(currentUrl, targetUrl);
-    // Always verify with DOM for accuracy — handles hash-routing SPAs where URL path is always '/'
-    // and any SPA navigation that _onUrlChange might have mis-detected.
-    if (currentUrl != null && currentUrl.trim().isNotEmpty) {
-      try {
-        final domStatus = await _detectLoginStatus();
-        if (domStatus == 'LOGGED_IN' || domStatus == 'LOGGED_OUT') loginStatus = domStatus;
-      } catch (_) {}
-    } else if (loginStatus == 'LOGGED_OUT') {
-      final domStatus = await _detectLoginStatus();
-      if (domStatus == 'LOGGED_IN' || domStatus == 'LOGGED_OUT') loginStatus = domStatus;
-    }
+    final String loginStatus = await _resolveLoginStatus(currentUrl);
     // Heartbeat-based fallback: notify server immediately if status changed (catches SPA logouts
     // that _onUrlChange might miss).
     if ((loginStatus == 'LOGGED_IN' || loginStatus == 'LOGGED_OUT') &&
@@ -1028,6 +1006,97 @@ class _WebViewScreenState extends State<WebViewScreen>
 })();
 ''';
 
+  /// Kicks off the session lookup and parks the answer on `window`.
+  ///
+  /// It has to be split in two: `runJavaScriptReturningResult` evaluates an
+  /// expression and returns its value IMMEDIATELY - it does not await a Promise.
+  /// Returning `fetch(...)` handed back an unresolved Promise every time, the
+  /// letter came out empty, and the code silently fell back to guessing from the
+  /// URL. So: one call starts the request, a second one reads the result.
+  static const String _whoAmIStartJs = r"""
+(function() {
+  try {
+    window.__asWhoAmI = 'PENDING';
+    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) {
+        window.__asWhoAmI = JSON.stringify({
+          letter: (j && j.judgeLetter) || '',
+          name: (j && (j.judgeName || j.username)) || ''
+        });
+      })
+      .catch(function() { window.__asWhoAmI = JSON.stringify({ letter: '', name: '' }); });
+  } catch (e) {
+    window.__asWhoAmI = JSON.stringify({ letter: '', name: '' });
+  }
+})();
+""";
+
+  static const String _whoAmIReadJs = r"""(window.__asWhoAmI || '')""";
+
+  /// Android returns JS strings JSON-encoded, so a string arrives wrapped in
+  /// quotes and escaped. Unwrap once before parsing what is inside.
+  static String _unwrapJsString(Object? raw) {
+    var text = (raw is String ? raw : raw.toString()).trim();
+    if (text.startsWith('"')) {
+      try { text = jsonDecode(text) as String; } catch (_) {}
+    }
+    return text;
+  }
+
+  /// (letter, name) of the signed-in judge; empty strings when nobody is.
+  Future<(String, String)> _fetchSignedInJudge() async {
+    final c = _controller;
+    if (c == null) return ('', '');
+    try {
+      await c.runJavaScript(_whoAmIStartJs);
+      // ~1.5s is plenty for a request to a server on the same LAN; if it has not
+      // answered by then the fallbacks below take over for this cycle only.
+      for (var i = 0; i < 15; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        final text = _unwrapJsString(await c.runJavaScriptReturningResult(_whoAmIReadJs));
+        if (text.isEmpty || text == 'PENDING' || text == 'null') continue;
+        final map = jsonDecode(text);
+        if (map is Map) {
+          final letter = (map['letter'] ?? '').toString().trim();
+          final name = (map['name'] ?? '').toString().trim();
+          if (letter.isNotEmpty) _log('signed in as: letter=$letter name=$name');
+          return (letter, name);
+        }
+        break;
+      }
+    } catch (e) {
+      _log('whoami failed: $e');
+    }
+    return ('', '');
+  }
+
+  /// The one place that answers "is a judge signed in, and who".
+  ///
+  /// The session is the authority, so it is asked FIRST. Everything else here is
+  /// a fallback for when /api/auth/me cannot be reached at all.
+  ///
+  /// The old order guessed from the URL and only asked the server once the guess
+  /// already said LOGGED_IN - so a wrong guess could never be corrected. And it
+  /// was wrong: the judge screen lives at **/judge-2**, while the path test only
+  /// accepted '/judge' followed by a slash. A judge who was very much signed in
+  /// read as signed out for a whole show.
+  Future<String> _resolveLoginStatus(String? currentUrl) async {
+    final (letter, name) = await _fetchSignedInJudge();
+    if (letter.isNotEmpty) {
+      _socketService?.setSignedInJudge(letter, name);
+      return 'LOGGED_IN';
+    }
+    _socketService?.setSignedInJudge('', '');
+
+    final targetUrl = _currentTargetUrl;
+    var status = _computeLoginStatusFromUrls(currentUrl, targetUrl);
+    if (status != 'LOGGED_IN' && status != 'LOGGED_OUT') {
+      status = await _detectLoginStatus();
+    }
+    return status;
+  }
+
   Future<String> _detectLoginStatus() async {
     final c = _controller;
     if (c == null) return 'UNKNOWN';
@@ -1058,13 +1127,8 @@ class _WebViewScreenState extends State<WebViewScreen>
       } catch (_) {}
     }
     final currentUrl = uri?.toString();
-    final targetUrl = _currentTargetUrl;
-    String detected = _computeLoginStatusFromUrls(currentUrl, targetUrl);
-    if (detected == 'LOGGED_OUT' && (currentUrl == null || currentUrl.trim().isEmpty || (targetUrl == null || targetUrl.trim().isEmpty))) {
-      final domStatus = await _detectLoginStatus();
-      if (domStatus == 'LOGGED_IN' || domStatus == 'LOGGED_OUT') detected = domStatus;
-    }
-    if (detected != 'LOGGED_IN' && detected != 'LOGGED_OUT') detected = await _detectLoginStatus();
+    final detected = await _resolveLoginStatus(currentUrl);
+
     final prevStatus = _lastLoginStatus;
     if (mounted) setState(() => _lastLoginStatus = detected);
     if (prevStatus != detected) {

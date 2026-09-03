@@ -18,6 +18,12 @@ const tabletSockets = new Map();
 const lastHeartbeatByDeviceId = new Map();
 /** deviceId -> last reported loginStatus (LOGGED_IN / LOGGED_OUT / UNKNOWN). */
 const lastLoginStatusByDeviceId = new Map();
+/**
+ * deviceId -> { letter, name } of the judge signed in on that tablet's WebView.
+ * This replaces tablets.judge_letter as the answer to "who is on this device":
+ * the tablet no longer carries an identity, the scoring session does.
+ */
+const signedInJudgeByDeviceId = new Map();
 /** deviceId -> last measured latency (ms), reported by tablet in heartbeat. */
 const lastLatencyMsByDeviceId = new Map();
 /** deviceId -> last app active state (boolean), reported by tablet in heartbeat. */
@@ -35,6 +41,14 @@ let lastHeartbeatPushAt = 0;
 
 function ts() {
   return new Date().toISOString();
+}
+
+/** Record (or clear) who is signed in on a device. */
+function rememberSignedInJudge(deviceId, payload) {
+  const letter = (payload.signedInJudgeLetter ?? payload.signed_in_judge_letter ?? '').toString().trim().toUpperCase();
+  const name = (payload.signedInJudgeName ?? payload.signed_in_judge_name ?? '').toString().trim();
+  if (letter) signedInJudgeByDeviceId.set(deviceId, { letter, name });
+  else signedInJudgeByDeviceId.delete(deviceId);
 }
 
 function log(msg, meta = '') {
@@ -124,125 +138,81 @@ function computeLoginStatusFromUrls(currentWebviewUrl, targetUrl) {
   return 'LOGGED_IN';
 }
 
+/**
+ * Column order laith asked for: judge letters A..Z first, then the role labels
+ * R.G, D.C, SPEAKER, ADMIN. A tablet that is connected but nobody has signed in
+ * on yet sorts last, under a "-" heading.
+ */
+function labelSortKey(label) {
+  const l = (label || '').trim().toUpperCase();
+  if (/^[A-Z]$/.test(l)) return l.charCodeAt(0) - 65;
+  switch (l) {
+    case 'R.G': return 30;
+    case 'D.C': return 31;
+    case 'M.C': return 32;
+    case 'SPEAKER': return 33;
+    case 'SCREEN': return 34;
+    case 'ADMIN': return 35;
+    default: return 40;
+  }
+}
+
+/**
+ * Dashboard state - ONE COLUMN PER CONNECTED TABLET.
+ *
+ * It used to be one column per row of the 5050 judges table, which meant the
+ * screen showed people who had not been at a show for two months and hid a
+ * tablet that was switched on but unassigned. Now nothing that is not connected
+ * takes up space, and the heading is the judge signed in on that device.
+ */
 function buildDashboardState() {
-  const judges = judgesService.list();
   const tablets = tabletService.list();
-  const tabletByLetter = {};
-  const scoreTabletRecency = (t) => {
-    const seen = t && t.last_seen_at ? new Date(t.last_seen_at).getTime() : 0;
-    const upd = t && t.updated_at ? new Date(t.updated_at).getTime() : 0;
-    const idn = Number(t && t.id) || 0;
-    return Math.max(seen || 0, upd || 0, idn || 0);
-  };
-  tablets.forEach((t) => {
-    const L = (t.judge_letter || '').toString().toUpperCase().trim();
-    if (!L) return;
-    const prev = tabletByLetter[L];
-    if (!prev || scoreTabletRecency(t) >= scoreTabletRecency(prev)) {
-      tabletByLetter[L] = t;
-    }
-  });
   const settings = settingsService.get();
   const expectedSsid = (settings && settings.expected_wifi_ssid || '').trim();
 
-  /** Tablets that are connected (ONLINE) but not assigned to any judge — show as "Pending Assign" so they appear ONLINE and admin can Assign.
-   *  Also includes tablets that have an old assignment but are currently on the setup/assign screen. */
-  const unassignedOnlineTablets = tablets.filter((t) => {
-    if (!isTabletLiveOnline(t.device_id)) return false;
-    const inSetup = tabletInSetupByDeviceId.has(t.device_id) ||
-      (t.foreground_state || '').toString().toLowerCase() === 'setup_screen';
-    const hasLetter = (t.judge_letter || '').toString().trim();
-    // Show in Pending Assign if no judge letter, OR if has a stale letter but is on setup screen.
-    return !hasLetter || inSetup;
-  });
-  const pendingColumns = unassignedOnlineTablets.map((t) => ({
-    judge: {
-      judge_letter: '—',
-      judge_name: 'Pending Assign',
-      judge_color: null,
-      judge_color_hex: '#6b7280',
-      online: true,
-    },
-    tablet: { ...t, loginStatus: null },
-  }));
+  const online = tablets.filter((t) => isTabletLiveOnline(String(t.device_id || '')));
 
-  const judgeColumns = judges.map((j) => {
-    const judgeKey = (j.judge_letter || '').toString().toUpperCase().trim();
-    const tablet = judgeKey ? (tabletByLetter[judgeKey] || null) : null;
-    const inSetup = tablet ? (tabletInSetupByDeviceId.has(tablet.device_id) ||
-      (tablet.foreground_state || '').toString().toLowerCase() === 'setup_screen') : false;
-    const online = tablet ? (isTabletLiveOnline(tablet.device_id) && !inSetup) : false;
-    let loginStatus = null;
-    if (tablet && online) {
-      // Prefer status reported by tablet (heartbeat / login_status_changed); fallback to URL-based.
-      const reported = lastLoginStatusByDeviceId.get(tablet.device_id);
-      if (reported === 'LOGGED_IN' || reported === 'LOGGED_OUT') {
-        loginStatus = reported;
-      } else {
-        // Same resolution as the config the tablet was given, otherwise 'auto'
-        // would compare the tablet's real URL against the literal word 'auto'
-        // and every judge would read as LOGGED_OUT.
-        const { resolveWebviewUrl } = require('./utils/lanUrl');
-        const targetUrl = resolveWebviewUrl(
-          (tablet.custom_webview_url && tablet.custom_webview_url.trim())
-            ? tablet.custom_webview_url.trim()
-            : (settings && settings.global_webview_url ? settings.global_webview_url : '')
-        );
-        loginStatus = computeLoginStatusFromUrls(tablet.current_webview_url, targetUrl);
-      }
-    }
-    /** When OFFLINE, do not expose live session/device data; only id, device_id, last_seen_at, and config (e.g. custom_webview_url) for display. */
-    let tabletForColumn = null;
-    if (tablet) {
-      if (online) {
-        tabletForColumn = { ...tablet, loginStatus };
-      } else {
-        tabletForColumn = {
-          id: tablet.id,
-          device_id: tablet.device_id,
-          last_seen_at: tablet.last_seen_at,
-          custom_webview_url: tablet.custom_webview_url,
-          judge_letter: tablet.judge_letter,
-          judge_name: tablet.judge_name,
-          loginStatus: null,
-          battery_level: null,
-          battery_temperature: null,
-          charging: null,
-          wifi_ssid: null,
-          ip_address: null,
-          current_webview_url: null,
-        };
-      }
-    }
-    // Color source of truth: tablet.tablet_color only.
-    const displayColorHex = tablet ? (getHex(tablet.tablet_color) || '#6b7280') : '#6b7280';
+  const columns = online.map((t) => {
+    const devId = String(t.device_id || '');
+    const signed = signedInJudgeByDeviceId.get(devId) || null;
+    const isAdminTablet = adminTabletDeviceIds.has(devId) ||
+      (t.judge_letter || '').toString().trim().toUpperCase() === '__ADMIN__';
+
+    const letter = signed ? signed.letter : (isAdminTablet ? 'ADMIN' : '');
+    const name = signed ? signed.name : (isAdminTablet ? 'Admin View' : '');
+    const loginStatus = lastLoginStatusByDeviceId.get(devId) || null;
+
     return {
       judge: {
-        ...j,
-        judge_color_hex: displayColorHex,
-        online,
+        judge_letter: letter || '—',
+        judge_name: name || (letter ? '' : 'Waiting for sign-in'),
+        signed_in: !!signed,
+        judge_color_hex: getHex(t.tablet_color) || '#6b7280',
+        online: true,
       },
-      tablet: tabletForColumn,
+      tablet: { ...t, loginStatus },
     };
   });
 
-  const columns = pendingColumns.concat(judgeColumns);
-
-  let onlineCount = 0;
-  tablets.forEach((t) => {
-    if (isTabletLiveOnline(t.device_id)) onlineCount++;
+  columns.sort((a, b) => {
+    const k = labelSortKey(a.judge.judge_letter) - labelSortKey(b.judge.judge_letter);
+    if (k !== 0) return k;
+    // Two unnamed tablets: stable order by device id so columns do not jump.
+    return String(a.tablet.device_id || '').localeCompare(String(b.tablet.device_id || ''));
   });
+
   let lowBattery = 0;
   let wrongNetwork = 0;
-  tablets.forEach((t) => {
+  online.forEach((t) => {
     if (t.battery_level != null && t.battery_level < 20) lowBattery++;
     if (expectedSsid && t.wifi_ssid && String(t.wifi_ssid).trim() !== '' && t.wifi_ssid !== expectedSsid) wrongNetwork++;
   });
 
   const stats = {
     total: tablets.length,
-    online: onlineCount,
-    offline: tablets.length - onlineCount,
+    online: online.length,
+    offline: tablets.length - online.length,
+    signedIn: columns.filter((c) => c.judge.signed_in).length,
     lowBattery,
     wrongNetwork,
   };
@@ -505,6 +475,7 @@ function onTabletDisconnected(deviceId) {
   const wasAdmin = adminTabletDeviceIds.has(deviceId);
   tabletSockets.delete(deviceId);
   lastHeartbeatByDeviceId.delete(deviceId);
+  signedInJudgeByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
   lowBatteryAlertedByDeviceId.delete(deviceId);
@@ -742,6 +713,7 @@ function init(httpServer, sessionMiddleware) {
       if (loginStatus === 'LOGGED_IN' || loginStatus === 'LOGGED_OUT') {
         lastLoginStatusByDeviceId.set(devId, loginStatus);
       }
+      rememberSignedInJudge(devId, payload);
       try {
         tabletService.heartbeat(devId, {
           judgeLetter: payload.judgeLetter ?? payload.judge_letter,
@@ -862,6 +834,7 @@ function init(httpServer, sessionMiddleware) {
       const status = String(payload.loginStatus ?? payload.login_status ?? 'UNKNOWN').toUpperCase();
       if (devId && (status === 'LOGGED_IN' || status === 'LOGGED_OUT')) {
         lastLoginStatusByDeviceId.set(devId, status);
+        rememberSignedInJudge(devId, payload);
         log('loginStatus changed', `device=${devId} status=${status}`);
         // Notify admin tablets on judge login / logout (skip admin tablets themselves).
         if (!adminTabletDeviceIds.has(devId)) {

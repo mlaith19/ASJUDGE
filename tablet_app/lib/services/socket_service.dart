@@ -284,6 +284,19 @@ class SocketService with WidgetsBindingObserver {
 
   Map<String, dynamic> _lastHeartbeatPayload = const {};
 
+  /// Who is signed in on the scoring page right now, read from the WebView's own
+  /// session. Kept as its own field rather than inside _lastHeartbeatPayload,
+  /// because that map is REPLACED on every updateHeartbeatPayload call and this
+  /// value has to survive between them - it changes only at sign-in/out.
+  String _signedInLetter = '';
+  String _signedInName = '';
+
+  /// Pass empty strings on sign-out.
+  void setSignedInJudge(String letter, String name) {
+    _signedInLetter = letter.trim();
+    _signedInName = name.trim();
+  }
+
   /// For DEBUG: keys that will be merged into next emit.
   List<String> debugLastPayloadKeys() => _lastHeartbeatPayload.keys.toList();
 
@@ -326,6 +339,10 @@ class SocketService with WidgetsBindingObserver {
       'sent_at': sentAt,
       if (_lastLatencyMs != null) 'latency_ms': _lastLatencyMs,
       'app_active': _appActive,
+      // The judge actually signed in on the page - the tablet has no identity
+      // of its own any more, so this is what names a dashboard column.
+      'signedInJudgeLetter': _signedInLetter,
+      'signedInJudgeName': _signedInName,
       ...merged,
     };
     try {
@@ -385,6 +402,8 @@ class SocketService with WidgetsBindingObserver {
       'type': 'login_status_changed',
       'deviceId': deviceId,
       'loginStatus': loginStatus,
+      'signedInJudgeLetter': _signedInLetter,
+      'signedInJudgeName': _signedInName,
       'timestamp': DateTime.now().millisecondsSinceEpoch ~/ 1000,
     });
   }
