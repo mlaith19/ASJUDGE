@@ -22,7 +22,7 @@ module.exports = session({
   cookie: {
     maxAge: 24 * 60 * 60 * 1000,
     httpOnly: true,
-    secure: config.nodeEnv === 'production',
+    secure: config.cookieSecure,
     sameSite: 'lax',
   },
 });

@@ -1,3 +1,6 @@
+/// The server no longer sends judgeUsername / judgePassword: it used to hand
+/// every tablet a judge's password in clear text so the app could auto-fill the
+/// login form. Judges sign in themselves now.
 class TabletConfig {
   final String targetWebviewUrl;
   final String judgeName;
@@ -5,8 +8,6 @@ class TabletConfig {
   final String judgeColor;
   /// When no judge is assigned, server sends a stable display color for this tablet (palette key).
   final String tabletDisplayColor;
-  final String judgeUsername;
-  final String judgePassword;
   final String tabletLabel;
   final int pollingIntervalSeconds;
   final bool forceReload;
@@ -23,8 +24,6 @@ class TabletConfig {
     this.judgeLetter = '',
     this.judgeColor = '',
     this.tabletDisplayColor = '',
-    this.judgeUsername = '',
-    this.judgePassword = '',
     required this.tabletLabel,
     required this.pollingIntervalSeconds,
     required this.forceReload,
@@ -43,8 +42,6 @@ class TabletConfig {
       judgeLetter: ((json['judgeLetter'] ?? json['judge_letter'] ?? json['judge'] ?? '') as String?)?.trim().toUpperCase() ?? '',
       judgeColor: (json['judgeColor'] as String?)?.trim() ?? '',
       tabletDisplayColor: ((json['tabletDisplayColor'] ?? json['tabletColor'] ?? json['tablet_color']) as String?)?.trim().toLowerCase() ?? '',
-      judgeUsername: (json['judgeUsername'] as String?)?.trim() ?? '',
-      judgePassword: (json['judgePassword'] as String?)?.trim() ?? '',
       tabletLabel: (json['tabletLabel'] as String?)?.trim() ?? '',
       pollingIntervalSeconds: _parseInt(json['pollingIntervalSeconds'], 25),
       forceReload: json['forceReload'] == true,

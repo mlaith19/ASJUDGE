@@ -1,3 +1,12 @@
+// Schema first, before anything opens the database.
+//
+// init.js is idempotent - every statement is CREATE TABLE IF NOT EXISTS or INSERT OR
+// IGNORE - so on an existing database this does nothing. On an empty one it is the
+// difference between a working server and "no such table: tablets", which is what a
+// fresh `db-data` volume gave every time the container was rebuilt.
+require('./db/init');
+require('./db/bootstrap-admin');
+
 const http = require('http');
 const app = require('./app');
 const config = require('./config');

@@ -79,7 +79,8 @@ function getConfig(req, res) {
       return res.status(400).json({ success: false, error: 'deviceId is required' });
     }
 
-    const config = Tablet.getConfig(deviceId);
+    // req.headers.host is the address this tablet dialled - see utils/lanUrl.js.
+    const config = Tablet.getConfig(deviceId, req.headers && req.headers.host);
     if (!config) {
       return res.status(404).json({ success: false, error: 'Tablet not found' });
     }

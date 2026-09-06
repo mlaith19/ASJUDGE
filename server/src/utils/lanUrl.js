@@ -94,6 +94,44 @@ function autoWebviewUrl() {
   return ip ? `http://${ip}:${TABLET_WEB_PORT}/` : null;
 }
 
+/**
+ * The host the tablet actually reached us on.
+ *
+ * detectLanIp() answers a question this machine has no information about: which
+ * of its own network cards can the tablet see. It guesses well on a bare Windows
+ * box and cannot possibly guess right inside a container, where the only card is
+ * `eth0` on Docker's own 172.x bridge - a name that matches WIRED_IFACE and an
+ * address the tablet can never reach. The tablet then loads nothing and shows a
+ * white screen while the server looks healthy.
+ *
+ * But the tablet already reached us: it is asking this very question over a
+ * connection it opened itself. The Host header of that request is, by definition,
+ * an address that works from where the tablet is standing. No guessing needed.
+ *
+ * Only the hostname is kept - the port is always TABLET_WEB_PORT, because the
+ * tablet asks the API (5050, or 3050 over the socket) but loads Next.js.
+ *
+ * Requests that did not come from a tablet - the scoring app proxying through
+ * localhost - are rejected here and fall back to the interface guess.
+ */
+function hostFromRequest(rawHost) {
+  const host = String(rawHost || '').trim();
+  if (!host) return null;
+  // Strip the port, and the brackets an IPv6 literal arrives in.
+  const hostname = host.startsWith('[')
+    ? host.slice(1, host.indexOf(']'))
+    : host.split(':')[0];
+  if (!hostname) return null;
+  if (/^(localhost|127\.|0\.0\.0\.0$|::1$)/i.test(hostname)) return null;
+  return hostname;
+}
+
+/** `http://<what the tablet dialled>:3050/`, or null when there is no usable host. */
+function clientSeenWebviewUrl(rawHost) {
+  const hostname = hostFromRequest(rawHost);
+  return hostname ? `http://${hostname}:${TABLET_WEB_PORT}/` : null;
+}
+
 /** True for the values that mean "work it out yourself". */
 function isAutoValue(configured) {
   const v = (configured == null ? '' : String(configured)).trim().toLowerCase();
@@ -102,11 +140,14 @@ function isAutoValue(configured) {
 
 /**
  * @param {string} configured - global_webview_url or a tablet's custom_webview_url
- * @returns {string} the URL to hand the tablet ('' when auto and no LAN address was found)
+ * @param {string} [clientSeenHost] - the Host header of the request the tablet made
+ * @returns {string} the URL to hand the tablet ('' when auto and nothing was found)
  */
-function resolveWebviewUrl(configured) {
+function resolveWebviewUrl(configured, clientSeenHost) {
   if (!isAutoValue(configured)) return String(configured).trim();
-  return autoWebviewUrl() || '';
+  // A fact from the tablet beats a guess about our own cards. The guess stays as
+  // the fallback for callers with no request behind them.
+  return clientSeenWebviewUrl(clientSeenHost) || autoWebviewUrl() || '';
 }
 
 /**
@@ -127,6 +168,8 @@ function withPath(baseUrl, pathname) {
 module.exports = {
   detectLanIp,
   autoWebviewUrl,
+  hostFromRequest,
+  clientSeenWebviewUrl,
   isAutoValue,
   resolveWebviewUrl,
   withPath,

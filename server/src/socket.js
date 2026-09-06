@@ -619,7 +619,8 @@ function init(httpServer, sessionMiddleware) {
         }
       }
       const tablet = tabletService.findByDeviceId(devId);
-      const cfg = tabletService.getConfig(devId) || {};
+      // The host of the socket handshake - the address this tablet dialled.
+      const cfg = tabletService.getConfig(devId, socket.handshake?.headers?.host) || {};
       const colorKey = (cfg.tablet_color || cfg.tabletColor || cfg.tabletDisplayColor || '').toString().trim().toLowerCase();
       const cfgWithColor = {
         ...cfg,

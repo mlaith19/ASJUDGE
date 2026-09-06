@@ -290,7 +290,7 @@ function heartbeat(deviceId, payload) {
   return findByDeviceId(deviceId);
 }
 
-function getConfig(deviceId) {
+function getConfig(deviceId, clientSeenHost) {
   const settings = require('./settingsService').get();
   const tablet = findByDeviceId(deviceId);
   if (!tablet) throw new Error('Tablet not registered');
@@ -302,7 +302,7 @@ function getConfig(deviceId) {
   const configuredUrl = hasCustomUrl
     ? tablet.custom_webview_url.trim()
     : (settings.global_webview_url || '');
-  const resolvedUrl = resolveWebviewUrl(configuredUrl);
+  const resolvedUrl = resolveWebviewUrl(configuredUrl, clientSeenHost);
   // An Admin View tablet exists to show the dashboard, so it does not get the
   // judge login screen. An explicit per-tablet URL still wins - if someone set
   // one by hand they meant it.
@@ -322,10 +322,9 @@ function getConfig(deviceId) {
   const pendingAction = (tablet.pending_action || '').trim();
   const pendingActionPayload = (tablet.pending_action_payload || '').trim();
 
-  const judgesService = require('./judgesService');
-  const judgeRecord = tablet.judge_letter ? judgesService.getByLetter(tablet.judge_letter) : null;
-  const judgeUsername = judgeRecord ? (judgeRecord.username || '') : '';
-  const judgePassword = judgeRecord ? (judgeRecord.password || '') : '';
+  // Credentials used to be read from the judges table here and sent to the
+  // tablet in clear text, so the app could type them into the login form.
+  // The judge signs in themselves now - passwords never leave the server.
 
   const tabletDisplayColor = ensureTabletColorPersisted(deviceId) || 'red';
 
@@ -337,8 +336,6 @@ function getConfig(deviceId) {
     tablet_color: tabletDisplayColor,
     tabletColor: tabletDisplayColor,
     tabletDisplayColor,
-    judgeUsername,
-    judgePassword,
     tabletLabel: tablet.tablet_label || '',
     pollingIntervalSeconds: settings.polling_interval_seconds || 25,
     forceReload,

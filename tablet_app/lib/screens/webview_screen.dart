@@ -68,13 +68,8 @@ class _WebViewScreenState extends State<WebViewScreen>
   int _adminTapCount = 0;
   Timer? _adminTapTimer;
   bool _navigatingToSetup = false;
-  String _judgeUsername = '';
-  String _judgePassword = '';
   String _lastLoginStatus = 'UNKNOWN';
-  bool _autoLoginAttemptedOnCurrentPage = false;
-  int _autoLoginAttemptsForCurrentPage = 0;
   /// When false, tablet must NOT auto-login (e.g. after admin forced logout).
-  bool _autoLoginAllowed = true;
   /// When we started loading the target URL; used to avoid acting before navigation settles (e.g. after Assign).
   DateTime? _targetUrlLoadStartedAt;
   /// Location permission: null/false = show banner and dialog until granted.
@@ -86,7 +81,6 @@ class _WebViewScreenState extends State<WebViewScreen>
   static const String _logTag = 'WebView';
   static const Duration _postAssignWaitBeforeConnect = Duration(milliseconds: 2500);
   static const Duration _urlSettleGracePeriod = Duration(seconds: 4);
-  static const Duration _delayedAutoLoginAfterLoad = Duration(seconds: 2);
   void _log(String msg) => debugPrint('[$_logTag] $msg');
 
   @override
@@ -564,20 +558,12 @@ class _WebViewScreenState extends State<WebViewScreen>
         _controller != null;
     if (sameUrlAlreadyLoaded) {
       _log('config received again (e.g. reconnect); same URL already loaded, skip reload');
-      setState(() {
-        _judgeUsername = config.judgeUsername;
-        _judgePassword = config.judgePassword;
-      });
       _heartbeatPayloadTimer?.cancel();
       _heartbeatPayloadTimer = Timer.periodic(const Duration(seconds: 3), (_) => _updateHeartbeatPayload());
       _updateHeartbeatPayload();
       _requestLocationForHeartbeatIfNeeded();
       return;
     }
-    setState(() {
-      _judgeUsername = config.judgeUsername;
-      _judgePassword = config.judgePassword;
-    });
     _heartbeatPayloadTimer?.cancel();
     _heartbeatPayloadTimer = Timer.periodic(const Duration(seconds: 3), (_) => _updateHeartbeatPayload());
     _updateHeartbeatPayload();
@@ -708,26 +694,15 @@ class _WebViewScreenState extends State<WebViewScreen>
       });
       return;
     }
-    if (action == 'login_webview') {
-      _log('login_webview received; setting autoLoginAllowed=true');
-      _autoLoginAllowed = true;
-      _runLoginWebView().then((_) {
-        if (mounted) {
-          _socketService?.sendCommandCompleted(action);
-          _log('command_completed sent (login_webview)');
-        }
-      });
+    // Auto-login is gone. The server used to hand the tablet a judge's username
+    // and password in clear text so the app could type them into the page; the
+    // judge signs in themselves now, so there is nothing to automate and nothing
+    // to leak. The commands are still acknowledged so an older admin build does
+    // not sit waiting for a reply.
+    if (action == 'login_webview' || action == 'set_auto_login_enabled') {
+      _log('$action ignored: auto-login was removed');
+      _socketService?.sendCommandCompleted(action);
       return;
-    }
-    if (action == 'logout_webview') {
-      _log('logout_webview received; setting autoLoginAllowed=false');
-      _autoLoginAllowed = false;
-    }
-    if (action == 'set_auto_login_enabled') {
-      final p = payload?.toString().toLowerCase();
-      final enabled = p == 'true' || p == '1';
-      _autoLoginAllowed = enabled;
-      _log('set_auto_login_enabled: $enabled');
     }
     if (action == 'edit_judge_setup' || action == 'reset_setup') {
       _socketService?.sendCommandCompleted(action);
@@ -770,30 +745,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
   }
 
-  /// Runs auto-login in WebView (fill form + submit). Used for login_webview command and on page load.
-  Future<void> _runLoginWebView() async {
-    final c = _controller;
-    if (c == null) return;
-    if (_judgeUsername.isEmpty && _judgePassword.isEmpty) {
-      _log('auto-login skipped: no credentials');
-      return;
-    }
-    try {
-      _log('login form fill and submit');
-      await c.runJavaScript(_buildAutoLoginJs(_judgeUsername, _judgePassword));
-      await Future.delayed(const Duration(milliseconds: 500));
-      String? currentUrl;
-      try { currentUrl = await c.currentUrl(); } catch (_) {}
-      String status = _computeLoginStatusFromUrls(currentUrl, _currentTargetUrl);
-      if (status == 'LOGGED_OUT') status = await _detectLoginStatus();
-      if (mounted) setState(() => _lastLoginStatus = status);
-      _socketService?.updateHeartbeatPayload(loginStatus: status);
-      if (status == 'LOGGED_IN' || status == 'LOGGED_OUT') _socketService?.sendLoginStatusChanged(status);
-      _log('login button clicked, status=$status');
-    } catch (e) {
-      _log('_runLoginWebView error: $e');
-    }
-  }
 
   /// Fires on every URL change including SPA pushState navigation (Angular router).
   /// onPageFinished does NOT fire for client-side route changes, so this is the only
@@ -829,8 +780,6 @@ class _WebViewScreenState extends State<WebViewScreen>
   Future<void> _loadUrl(String url, {bool forceReload = false}) async {
     if (url.isEmpty || !isValidHttpUrl(url)) return;
     _targetUrlLoadStartedAt = DateTime.now();
-    _autoLoginAttemptedOnCurrentPage = false;
-    _autoLoginAttemptsForCurrentPage = 0;
     setState(() {
       _currentTargetUrl = url;
       _loading = true;
@@ -916,56 +865,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
     obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
   }
-})();
-''';
-  }
-
-  /// Auto-login for Angular login pages: wait for form, fill once, use MutationObserver to click button when it appears (e.g. button.general_btn_lg).
-  String _buildAutoLoginJs(String username, String password) {
-    final u = jsonEncode(username);
-    final p = jsonEncode(password);
-    return '''
-(function(){
-  var user = $u;
-  var pass = $p;
-  if (!user && !pass) return;
-  var attempts = 0;
-  var maxAttempts = 10;
-
-  function tryLogin(){
-    var username = document.querySelector('input[type="text"], input[name="username"], input[name="user"], input[id="username"]');
-    var password = document.querySelector('input[type="password"]');
-    var button = document.querySelector('button.general_btn_lg');
-
-    if (!username || !password) return false;
-
-    username.value = user;
-    username.dispatchEvent(new Event('input', { bubbles: true }));
-    username.dispatchEvent(new Event('change', { bubbles: true }));
-
-    password.value = pass;
-    password.dispatchEvent(new Event('input', { bubbles: true }));
-    password.dispatchEvent(new Event('change', { bubbles: true }));
-
-    if (button) {
-      button.click();
-      return true;
-    }
-    return false;
-  }
-
-  function attemptLoop(){
-    attempts++;
-    if (tryLogin()) return;
-    if (attempts < maxAttempts) setTimeout(attemptLoop, 500);
-  }
-
-  setTimeout(attemptLoop, 500);
-
-  var observer = new MutationObserver(function(){
-    if (tryLogin()) observer.disconnect();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
 })();
 ''';
   }
@@ -1138,36 +1037,6 @@ class _WebViewScreenState extends State<WebViewScreen>
     _socketService?.updateHeartbeatPayload(loginStatus: detected);
     final inGracePeriod = _targetUrlLoadStartedAt != null &&
         DateTime.now().difference(_targetUrlLoadStartedAt!) < _urlSettleGracePeriod;
-    // Auto-login only when allowed (admin may have forced logout and disabled it).
-    final shouldTryAutoLogin = _autoLoginAllowed &&
-        (_judgeUsername.isNotEmpty || _judgePassword.isNotEmpty) &&
-        (detected == 'LOGGED_OUT' || detected == 'UNKNOWN') &&
-        !_autoLoginAttemptedOnCurrentPage;
-    if (shouldTryAutoLogin) {
-      _autoLoginAttemptedOnCurrentPage = true;
-      _log('auto-login: credentials present, status=$detected, inGracePeriod=$inGracePeriod');
-      void runAutoLogin() async {
-        if (!mounted || _controller != c) return;
-        if (_autoLoginAttemptsForCurrentPage >= 2) return;
-        _autoLoginAttemptsForCurrentPage++;
-        try {
-          await c.runJavaScript(_buildAutoLoginJs(_judgeUsername, _judgePassword));
-          _log('auto-login: form filled, submit triggered (attempt $_autoLoginAttemptsForCurrentPage)');
-        } catch (e) {
-          _log('auto-login error: $e');
-        }
-      }
-      final initialDelay = inGracePeriod ? _delayedAutoLoginAfterLoad : const Duration(milliseconds: 500);
-      Future.delayed(initialDelay, runAutoLogin);
-      Future.delayed(inGracePeriod ? const Duration(milliseconds: 3500) : const Duration(milliseconds: 1500), () async {
-        if (!mounted || _controller != c) return;
-        final status = await _detectLoginStatus();
-        if (status == 'LOGGED_OUT' || status == 'UNKNOWN') {
-          _log('auto-login: second attempt (form may load late)');
-          runAutoLogin();
-        }
-      });
-    }
     // If we landed on blank/invalid URL, load target so we never stay on white page. In grace period add short delay so navigation can settle.
     final uriStr = uri?.toString();
     if (_isBlankOrInvalidUrl(uriStr) && _currentTargetUrl != null && _currentTargetUrl!.trim().isNotEmpty && isValidHttpUrl(_currentTargetUrl!.trim())) {
