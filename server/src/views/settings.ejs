@@ -8,10 +8,11 @@
   <form method="POST" action="/admin/settings/update" class="settings-form">
     <div class="form-group">
       <label for="global_webview_url">Global Default WebView URL</label>
-      <input type="url" id="global_webview_url" name="global_webview_url"
+      <!-- type="text": "auto" is the normal value here and is not a URL. -->
+      <input type="text" id="global_webview_url" name="global_webview_url"
              value="${settings.global_webview_url}" class="form-input" required
-             placeholder="http://192.168.10.100">
-      <small class="form-help">This URL will be loaded by all tablets that don't have a custom URL set</small>
+             placeholder="auto">
+      <small class="form-help">Loaded by every tablet without a URL of its own. <strong>auto</strong> means this server's own LAN address, so a DHCP change does not white-screen the hall.</small>
     </div>
 
     <div class="form-group">

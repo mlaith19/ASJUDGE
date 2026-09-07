@@ -33,7 +33,10 @@ module.exports = {
   databasePath: defaultDb,
   databaseTabletsPath: process.env.DB_TABLETS_PATH || defaultDb,
   databaseJudgesPath: process.env.DB_JUDGES_PATH || defaultDb,
-  backendBaseUrl: process.env.BACKEND_BASE_URL || 'http://192.168.10.100:5050',
+  // localhost, not a hall's address: this process talks to its own sibling on
+  // 5050, and the compose file passes BACKEND_BASE_URL anyway. The old default
+  // was a fixed IP from one venue, which answers nowhere the moment it is used.
+  backendBaseUrl: process.env.BACKEND_BASE_URL || 'http://localhost:5050',
   onlineThresholdSeconds: 60,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',

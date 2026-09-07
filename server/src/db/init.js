@@ -38,7 +38,17 @@ if (singleDb) {
     );
 
     INSERT OR IGNORE INTO settings (id, global_webview_url, polling_interval_seconds, judge_release_timeout_seconds, app_title, environment_label, expected_wifi_ssid, kiosk_mode_enabled_default)
-    VALUES (1, 'http://192.168.10.100', 25, 60, 'Tablet Monitor', 'Development', '', 1);
+    -- 'auto' means "this server's own LAN address", resolved per request in
+    -- utils/lanUrl.js, which treats 'auto' and an empty value the same way.
+    --
+    -- It used to seed http://192.168.10.100, a fixed address from one hall. The
+    -- seed only runs on a fresh database, and a fresh database is exactly what a
+    -- new Docker volume gives you — so every rebuild handed the tablets an address
+    -- that answers nowhere, and every tablet came up white while the dashboard
+    -- showed them all connected, because the socket was fine and only the WebView
+    -- pointed at nothing. It had to be corrected by hand in Settings after each
+    -- launch.
+    VALUES (1, 'auto', 25, 60, 'Tablet Monitor', 'Development', '', 1);
 
     CREATE TABLE IF NOT EXISTS tablets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +210,7 @@ if (singleDb) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
     INSERT OR IGNORE INTO settings (id, global_webview_url, polling_interval_seconds, judge_release_timeout_seconds, app_title, environment_label, expected_wifi_ssid, kiosk_mode_enabled_default)
-    VALUES (1, 'http://192.168.10.100', 25, 60, 'Tablet Monitor', 'Development', '', 1);
+    VALUES (1, 'auto', 25, 60, 'Tablet Monitor', 'Development', '', 1);
     CREATE TABLE IF NOT EXISTS judges (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       judge_letter TEXT UNIQUE NOT NULL,

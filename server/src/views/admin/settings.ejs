@@ -19,9 +19,13 @@
         <div class="settings-row">
           <div class="settings-label">
             <span>Default WebView URL</span>
-            <small>HTTP or HTTPS URL used by tablets when no custom URL is set</small>
+            <small>Leave as <strong>auto</strong> and the tablets follow this server's own address, whatever DHCP gives it. A full http:// URL pins them to one machine.</small>
           </div>
-          <input type="url" id="global_webview_url" name="global_webview_url" class="form-input" value="<%= (settings && settings.global_webview_url) || '' %>" placeholder="http://192.168.10.100" style="width: 100%; max-width: 320px;">
+          <!-- type="text", not "url": the browser refuses to submit the word
+               "auto", which is the value this field should hold almost always.
+               settingsService.js:45 accepts it and validates a real URL when one
+               is given, so nothing is lost by letting the field say it. -->
+          <input type="text" id="global_webview_url" name="global_webview_url" class="form-input" value="<%= (settings && settings.global_webview_url) || '' %>" placeholder="auto" style="width: 100%; max-width: 320px;">
         </div>
         <div class="settings-row">
           <div class="settings-label">
