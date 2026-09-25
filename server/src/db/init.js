@@ -11,6 +11,36 @@ const tabletsPath = resolvePath(config.databaseTabletsPath);
 const judgesPath = resolvePath(config.databaseJudgesPath);
 const singleDb = path.normalize(tabletsPath) === path.normalize(judgesPath);
 
+
+/*
+ * THE JUDGES' PASSWORDS, EMPTIED - EVERY BOOT, FOR GOOD.
+ *
+ * `judges.password` held the password in clear text. It was written there so the
+ * server could hand it to a tablet and have the app type it into the login form.
+ * That code is gone (tabletService.js says so where it used to be), but nobody
+ * emptied the column, so the passwords sat in the database file - and in every
+ * copy of it - for months after the last thing that read them was deleted.
+ *
+ * Emptied here rather than in a migration script because a migration is a thing
+ * somebody has to remember to run, and this must be true of the database that is
+ * running right now. It is idempotent: on the second boot there is nothing left
+ * to clear.
+ *
+ * The column itself stays. Dropping it would mean rebuilding the table on a live
+ * show database to remove something that is already empty.
+ */
+function wipeJudgePasswords(conn) {
+  try {
+    const n = conn.prepare("SELECT COUNT(*) AS n FROM judges WHERE password IS NOT NULL AND password != ''").get();
+    if (n && n.n > 0) {
+      conn.prepare("UPDATE judges SET password = ''").run();
+      console.log(`judges: cleared ${n.n} clear-text password(s)`);
+    }
+  } catch (e) {
+    console.error('judges: could not clear passwords -', e.message);
+  }
+}
+
 const dataDir = path.dirname(tabletsPath);
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
@@ -124,6 +154,7 @@ if (singleDb) {
   const _assignColor = db.prepare("UPDATE tablets SET tablet_color = ? WHERE id = ?");
   _needColor.forEach((t, i) => _assignColor.run(_PALETTE_KEYS[i % _PALETTE_KEYS.length], t.id));
   if (_needColor.length > 0) console.log(`[TABLET_COLOR_BACKFILL] assigned colors to ${_needColor.length} tablets`);
+  wipeJudgePasswords(db);
   db.close();
   console.log('Database initialized (single file) at', config.databasePath);
 } else {
@@ -226,6 +257,7 @@ if (singleDb) {
   `);
   try { dbJudges.exec("ALTER TABLE settings ADD COLUMN admin_tablet_alerts_enabled INTEGER DEFAULT 1"); } catch (_) {}
   try { dbJudges.exec("ALTER TABLE judges ADD COLUMN judge_type TEXT DEFAULT 'JUDGE'"); } catch (_) {}
+  wipeJudgePasswords(dbJudges);
   dbJudges.close();
   console.log('Tablets DB at', config.databaseTabletsPath);
   console.log('Judges DB at', config.databaseJudgesPath);

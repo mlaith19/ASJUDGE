@@ -41,9 +41,40 @@ function ensureTabletColorColumn() {
 
 ensureTabletColorColumn();
 
+/**
+ * `is_online` in the database, brought back in line with `last_seen_at`.
+ *
+ * WHY IT IS NEEDED AT ALL
+ * -----------------------
+ * The flag is set to 1 on every heartbeat and back to 0 when a tablet's socket
+ * disconnects. That covers a tablet that goes away. It does not cover THIS
+ * process going away: `pnpm launch` kills it, no disconnect handler ever runs,
+ * and every tablet stays marked online in the database for good. The REST API
+ * reads that flag and answers "2 tablets online" while the socket process, which
+ * keeps its own live map in memory, answers "none" - both reading correctly,
+ * from two different places. That disagreement is what this closes.
+ *
+ * WHY THE CUTOFF IS BUILT BY HAND
+ * -------------------------------
+ * It used to be `new Date(...).toISOString()`, which produces
+ * `2026-09-25T13:44:00.000Z`, and it was compared against `last_seen_at`, which
+ * SQLite writes as `2026-09-25 13:45:00` - a space where the T is, and no Z.
+ * SQLite compares those as plain strings, and at the eleventh character a space
+ * (0x20) is below a T (0x54). EVERY row therefore counted as older than the
+ * cutoff, so the first statement marked every tablet offline and the second
+ * matched nothing. The function was wrong in the direction that looks like it is
+ * working: tablets going offline is exactly what it is supposed to produce.
+ *
+ * Nobody noticed because nothing ever called it.
+ */
 function updateOnlineStatus() {
-  const cutoff = new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString();
-  db.prepare('UPDATE tablets SET is_online = 0 WHERE last_seen_at < ?').run(cutoff);
+  // Same shape SQLite's own datetime('now') writes, in UTC, so the string
+  // comparison below compares like with like.
+  const cutoff = new Date(Date.now() - ONLINE_THRESHOLD_MS)
+    .toISOString()
+    .replace('T', ' ')
+    .slice(0, 19);
+  db.prepare("UPDATE tablets SET is_online = 0 WHERE last_seen_at IS NULL OR last_seen_at < ?").run(cutoff);
   db.prepare('UPDATE tablets SET is_online = 1 WHERE last_seen_at >= ?').run(cutoff);
 }
 
@@ -489,6 +520,32 @@ function getDashboardStats() {
   });
   return { total: rows.length, online, offline, lowBattery, wrongNetwork };
 }
+
+
+/*
+ * A SWEEP, BECAUSE A KILLED PROCESS CANNOT CLEAN UP AFTER ITSELF.
+ *
+ * Once at load so a restart corrects the flags it left behind on the way out,
+ * then once a minute so a tablet that vanished without a clean disconnect - the
+ * battery died, the wifi dropped, somebody carried it out of range - stops being
+ * reported as present within a minute rather than for ever.
+ *
+ * unref() so this timer never keeps the process alive on its own: a server told
+ * to shut down should shut down, not sit waiting for the next sweep.
+ */
+try {
+  updateOnlineStatus();
+} catch (e) {
+  console.error('[TABLETS] initial online sweep failed:', e.message);
+}
+const onlineSweepTimer = setInterval(() => {
+  try {
+    updateOnlineStatus();
+  } catch (e) {
+    console.error('[TABLETS] online sweep failed:', e.message);
+  }
+}, 60000);
+if (typeof onlineSweepTimer.unref === 'function') onlineSweepTimer.unref();
 
 module.exports = {
   list,

@@ -20,6 +20,14 @@ const adminService = require('../../services/adminService');
 const { getHex } = require('../../constants/judgeColors');
 const socketService = require('../../socket');
 
+
+/** A SQLite datetime('now') string as something new Date() reads as UTC. */
+function utcFromSqlite(value) {
+  const s = String(value == null ? '' : value).trim();
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(s);
+  return m ? `${m[1]}T${m[2]}Z` : s;
+}
+
 function mapJudgeToV0(j, liveOnline = false) {
   const online = liveOnline || (!!(j.device_id) && (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(j.device_id)));
   const rawColor = j.tablet_color || (j.device_id ? (tabletService.findByDeviceId(j.device_id) || {}).tablet_color : null);
@@ -171,7 +179,14 @@ router.get('/tablets', requireAuth, (req, res) => {
         status: (socketService.isTabletLiveOnline && socketService.isTabletLiveOnline(t.device_id)) ? 'ONLINE' : 'OFFLINE',
         battery: t.battery_level != null ? t.battery_level : 0,
         ip: t.ip_address || '',
-        lastSeen: t.last_seen_at ? new Date(t.last_seen_at).toLocaleString() : '',
+        /*
+         * The Z matters. last_seen_at is written by SQLite's datetime('now'),
+         * which is UTC formatted "2026-09-25 13:05:00" with no timezone on the
+         * end, and new Date() takes a string like that as LOCAL time - three
+         * hours off in Israel in summer, which is how a tablet heard from two
+         * seconds ago came out as three hours stale.
+         */
+        lastSeen: t.last_seen_at ? new Date(utcFromSqlite(t.last_seen_at)).toLocaleString() : '',
         wifiName: t.wifi_ssid || null,
         isInSetupMode: inSetup,
       };

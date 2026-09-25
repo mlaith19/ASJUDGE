@@ -34,6 +34,22 @@ const tabletInSetupByDeviceId = new Set();
 const adminTabletDeviceIds = new Set();
 /** deviceId: we already sent a low-battery alert so we don't spam on every heartbeat. Reset when battery recovers. */
 const lowBatteryAlertedByDeviceId = new Set();
+const highTempAlertedByDeviceId = new Set();
+
+/*
+ * A tablet's BATTERY temperature, in Celsius, above which the operator is told.
+ *
+ * It is what Android reports and what these tablets already send on every
+ * heartbeat - nothing new has to be collected. A tablet working in a hall sits
+ * in the twenties and low thirties; the readings already in this database run
+ * 27 to 41. 40 is where it stops being the room and starts being the tablet.
+ *
+ * Two numbers, not one, and on purpose. A device sitting exactly on the line
+ * would otherwise alert, cool by a tenth, alert again, all afternoon - the same
+ * flapping the low-battery alert is written to avoid, and the same answer.
+ */
+const HIGH_TEMP_C = 40;
+const TEMP_RECOVERED_C = 37;
 const adminSockets = new Set();
 /** Throttle only heartbeat-driven pushes to avoid flooding when many tablets send heartbeats. */
 const HEARTBEAT_PUSH_THROTTLE_MS = 800;
@@ -479,6 +495,7 @@ function onTabletDisconnected(deviceId) {
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
   lowBatteryAlertedByDeviceId.delete(deviceId);
+  highTempAlertedByDeviceId.delete(deviceId);
   const conn = require('./db/connection');
   const dbTablets = conn.dbTablets || conn;
   const before = dbTablets.prepare('SELECT is_online FROM tablets WHERE device_id = ?').get(deviceId);
@@ -806,6 +823,26 @@ function init(httpServer, sessionMiddleware) {
             notifyAdminTablets('low_battery', { judgeLetter, judgeName, batteryLevel: battNum });
           } else if ((battNum >= 25 || charging) && lowBatteryAlertedByDeviceId.has(devId)) {
             lowBatteryAlertedByDeviceId.delete(devId);
+          }
+        }
+
+        // High-temperature alert, on the same channel and the same rule: once
+        // when it crosses, and not again until it has come back down.
+        const temp = payload.batteryTemperature ?? payload.battery_temperature;
+        const tempNum = temp != null ? parseFloat(String(temp)) : NaN;
+        if (!Number.isNaN(tempNum)) {
+          if (tempNum >= HIGH_TEMP_C && !highTempAlertedByDeviceId.has(devId)) {
+            highTempAlertedByDeviceId.add(devId);
+            const t = tabletService.findByDeviceId(devId);
+            const judgeLetter = t ? (t.judge_letter || '').trim() : '';
+            const judgeName = t ? (t.judge_name || '').trim() : '';
+            notifyAdminTablets('high_temp', {
+              judgeLetter,
+              judgeName,
+              temperatureC: Math.round(tempNum * 10) / 10,
+            });
+          } else if (tempNum <= TEMP_RECOVERED_C && highTempAlertedByDeviceId.has(devId)) {
+            highTempAlertedByDeviceId.delete(devId);
           }
         }
       }

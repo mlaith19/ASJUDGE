@@ -8,8 +8,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:vibration/vibration.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+/*
+ * flutter_inappwebview, not webview_flutter.
+ *
+ * webview_flutter has no pull-to-refresh and no way to bolt one on: the WebView
+ * swallows the vertical drag before any Flutter widget above it sees it, so a
+ * RefreshIndicator wrapped around it never fires. inappwebview exposes Android's
+ * own SwipeRefreshLayout through PullToRefreshController - the same gesture
+ * every other app on the tablet has, and the only one that behaves correctly
+ * over a page that scrolls its own inner panes rather than the document.
+ *
+ * Nothing else about this screen changes. The kiosk, the heartbeat, the socket
+ * and the admin corner never touched the WebView API and are untouched here.
+ */
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../config/judge_colors.dart';
 import '../models/tablet_config.dart';
@@ -55,12 +67,31 @@ class _WebViewScreenState extends State<WebViewScreen>
     with WidgetsBindingObserver {
   final DeviceInfoService _deviceInfo = DeviceInfoService();
   final KioskService _kioskService = KioskService();
-  WebViewController? _controller;
+  InAppWebViewController? _controller;
+  PullToRefreshController? _pullToRefresh;
   String? _currentTargetUrl;
   bool _loading = true;
   String? _error;
   bool _backendUnavailable = false;
   SocketService? _socketService;
+  /*
+   * THE LOADING CARD'S DEAD-MAN SWITCH.
+   *
+   * _loading raises a Card over the whole screen, and until now exactly one
+   * thing could lower it again: onLoadStop. That is an event, not a promise. A
+   * page whose load never completes - a request that never returns, a server
+   * that went away mid-build, a network that dropped between onLoadStart and the
+   * first byte - leaves the tablet under a modal spinner with no way out but
+   * killing the app. Measured on 25/09 after a judge logged out: the login page
+   * was underneath, drawn and working, behind a card nobody could dismiss.
+   *
+   * In a browser the same unfinished load is a tab that keeps spinning and you
+   * carry on reading the page. That is the behaviour to match, so this timer
+   * lifts the card whether or not the event ever arrives. It does not cancel the
+   * load and it does not reload anything - the page underneath stays exactly as
+   * it is, and it is usually complete.
+   */
+  Timer? _loadingWatchdog;
   Timer? _heartbeatPayloadTimer;
   bool _kioskEnabled = true;
   bool _keepScreenOn = true;
@@ -88,6 +119,37 @@ class _WebViewScreenState extends State<WebViewScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WebViewScreen.logoutHook = _menuLogout;
+    /*
+     * Pull down to refresh, always armed - and the pull DISTANCE is the only
+     * guard on it.
+     *
+     * Android arms this gesture whenever the page is scrolled to the top. On an
+     * ordinary page that is rare, because you have to scroll all the way up
+     * first. The judge screen is a fixed 100dvh layout whose panes scroll inside
+     * themselves and whose document never scrolls at all, so it is at the top
+     * permanently and the gesture is live on every part of the screen that is
+     * not one of those inner panes.
+     *
+     * Keeping it live is deliberate. The case this exists for is a tablet stuck
+     * mid-show, and a guard that asks the page whether anything is unsent would
+     * be asking the very page that has stopped answering - it would switch the
+     * refresh off exactly when it is needed.
+     *
+     * The pull distance is Android's default, ON PURPOSE. A longer one was set
+     * first, reasoning that a fixed-height page arms the gesture everywhere and a
+     * stray touch should not reload a judge mid-class. Then the gesture did not
+     * fire in the hall, and with a non-default distance in the way there was no
+     * telling whether the gesture was broken or merely stiff. Get it working at
+     * the distance every other app on the tablet uses; tighten it only if it
+     * turns out to fire by accident, with the evidence in hand rather than ahead
+     * of it.
+     */
+    _pullToRefresh = PullToRefreshController(
+      settings: PullToRefreshSettings(
+        color: const Color(0xFFFF9800),
+      ),
+      onRefresh: _refresh,
+    );
     _applyFullscreen();
     _loadConfigAndWebView();
     // On Android: check permission after build; show dialog if not granted (user tap = system shows permission dialog)
@@ -110,6 +172,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     // Only clear the hook if it is still ours - a newer screen may have replaced it.
     if (identical(WebViewScreen.logoutHook, _menuLogout)) WebViewScreen.logoutHook = null;
     _heartbeatPayloadTimer?.cancel();
+    _loadingWatchdog?.cancel();
     _socketService?.dispose();
     _adminTapTimer?.cancel();
     super.dispose();
@@ -413,7 +476,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       String? currentUrl;
       if (_controller != null) {
         try {
-          currentUrl = await _controller!.currentUrl();
+          currentUrl = (await _controller!.getUrl())?.toString();
         } catch (_) {}
       }
       var loginStatus = 'UNKNOWN';
@@ -607,7 +670,7 @@ class _WebViewScreenState extends State<WebViewScreen>
     String currentUrlSupport = 'no_controller';
     if (_controller != null) {
       try {
-        currentUrl = await _controller!.currentUrl();
+        currentUrl = (await _controller!.getUrl())?.toString();
         currentUrlSupport =
             currentUrl == null || currentUrl.isEmpty ? 'empty' : 'supported';
       } catch (e) {
@@ -787,28 +850,22 @@ class _WebViewScreenState extends State<WebViewScreen>
     });
     widget.storage.setLastKnownTargetUrl(url);
 
-    if (_controller == null) {
-      final platform = WebViewPlatform.instance;
-      _controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageStarted: (_) => setState(() => _loading = true),
-            onPageFinished: (uri) => _onPageFinished(uri),
-            onWebResourceError: (e) => setState(() {
-              _error = 'Page error: ${e.description}';
-              _loading = false;
-            }),
-            onUrlChange: (change) => _onUrlChange(change.url),
-          ),
-        );
-      if (platform is AndroidWebViewPlatform) {
-        (_controller!.platform as AndroidWebViewController)
-            .setMediaPlaybackRequiresUserGesture(false);
-      }
+    /*
+     * The widget owns the controller now, and that inverts the order here.
+     *
+     * webview_flutter built a controller and handed it to the widget, so this
+     * method could navigate before anything was on screen. inappwebview builds
+     * the widget first and hands a controller back in onWebViewCreated, so the
+     * FIRST url travels in initialUrlRequest - read from _currentTargetUrl, set
+     * in the setState above - and every later one goes through loadUrl.
+     *
+     * A null controller is therefore not a failure: it means the WebView has not
+     * been built yet, and it will be built pointing at this very url.
+     */
+    final c = _controller;
+    if (c != null) {
+      await c.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
     }
-
-    await _controller!.loadRequest(Uri.parse(url));
     if (mounted) setState(() => _loading = false);
   }
 
@@ -907,11 +964,17 @@ class _WebViewScreenState extends State<WebViewScreen>
 
   /// Kicks off the session lookup and parks the answer on `window`.
   ///
-  /// It has to be split in two: `runJavaScriptReturningResult` evaluates an
-  /// expression and returns its value IMMEDIATELY - it does not await a Promise.
-  /// Returning `fetch(...)` handed back an unresolved Promise every time, the
-  /// letter came out empty, and the code silently fell back to guessing from the
-  /// URL. So: one call starts the request, a second one reads the result.
+  /// It has to be split in two: `evaluateJavascript` evaluates an expression and
+  /// returns its value IMMEDIATELY - it does not await a Promise. Returning
+  /// `fetch(...)` handed back an unresolved Promise every time, the letter came
+  /// out empty, and the code silently fell back to guessing from the URL. So:
+  /// one call starts the request, a second one reads the result.
+  ///
+  /// Kept as-is through the move to inappwebview. That package does offer
+  /// callAsyncJavaScript, which awaits a Promise and would collapse this into one
+  /// call - but it needs a newer Android WebView than some of these tablets are
+  /// known to have, and this is the code that decides whether a judge reads as
+  /// signed in. Not worth finding out during a show.
   static const String _whoAmIStartJs = r"""
 (function() {
   try {
@@ -948,12 +1011,12 @@ class _WebViewScreenState extends State<WebViewScreen>
     final c = _controller;
     if (c == null) return ('', '');
     try {
-      await c.runJavaScript(_whoAmIStartJs);
+      await c.evaluateJavascript(source: _whoAmIStartJs);
       // ~1.5s is plenty for a request to a server on the same LAN; if it has not
       // answered by then the fallbacks below take over for this cycle only.
       for (var i = 0; i < 15; i++) {
         await Future.delayed(const Duration(milliseconds: 100));
-        final text = _unwrapJsString(await c.runJavaScriptReturningResult(_whoAmIReadJs));
+        final text = _unwrapJsString(await c.evaluateJavascript(source: _whoAmIReadJs));
         if (text.isEmpty || text == 'PENDING' || text == 'null') continue;
         final map = jsonDecode(text);
         if (map is Map) {
@@ -1000,14 +1063,36 @@ class _WebViewScreenState extends State<WebViewScreen>
     final c = _controller;
     if (c == null) return 'UNKNOWN';
     try {
-      final result = await c.runJavaScriptReturningResult(_detectLoginStatusJs);
+      final result = await c.evaluateJavascript(source: _detectLoginStatusJs);
       final s = (result is String ? result : result.toString()).trim().toUpperCase();
       if (s == 'LOGGED_IN' || s == 'LOGGED_OUT') return s;
     } catch (_) {}
     return 'UNKNOWN';
   }
 
+  /// How long the loading card may stay up without onLoadStop arriving.
+  ///
+  /// Long enough that a slow page is not interrupted by its own spinner
+  /// vanishing, short enough that nobody in the ring is left looking at a white
+  /// card wondering whether the tablet died.
+  static const Duration _loadingWatchdogTimeout = Duration(seconds: 8);
+
+  void _armLoadingWatchdog() {
+    _loadingWatchdog?.cancel();
+    _loadingWatchdog = Timer(_loadingWatchdogTimeout, () {
+      if (!mounted || !_loading) return;
+      _log('loading watchdog: no onLoadStop after ${_loadingWatchdogTimeout.inSeconds}s - lifting the overlay');
+      setState(() => _loading = false);
+    });
+  }
+
+  void _clearLoadingWatchdog() {
+    _loadingWatchdog?.cancel();
+    _loadingWatchdog = null;
+  }
+
   Future<void> _onPageFinished(Object? uri) async {
+    _clearLoadingWatchdog();
     setState(() => _loading = false);
     final c = _controller;
     if (c == null) return;
@@ -1022,7 +1107,7 @@ class _WebViewScreenState extends State<WebViewScreen>
         debugPrint('[OVERLAY_TABLET_COLOR]=$colorKey');
         debugPrint('[DISPLAY_COLOR_SOURCE]=${colorKey.isNotEmpty ? "tabletColor" : "default"}');
         final hex = JudgeColors.hexForKey(colorKey) ?? '#888888';
-        await c.runJavaScript(_buildHideAndMarkerJs(displayLetter, hex));
+        await c.evaluateJavascript(source: _buildHideAndMarkerJs(displayLetter, hex));
       } catch (_) {}
     }
     final currentUrl = uri?.toString();
@@ -1044,7 +1129,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       if (!mounted) return;
       setState(() => _loading = true);
       try {
-        await c.loadRequest(Uri.parse(_currentTargetUrl!.trim()));
+        await c.loadUrl(urlRequest: URLRequest(url: WebUri(_currentTargetUrl!.trim())));
       } catch (_) {}
       if (mounted) setState(() => _loading = false);
     }
@@ -1126,11 +1211,11 @@ class _WebViewScreenState extends State<WebViewScreen>
     if (targetUrl == null || targetUrl.trim().isEmpty || !isValidHttpUrl(targetUrl.trim())) return;
     final url = targetUrl.trim();
     try {
-      final current = await c.currentUrl();
+      final current = (await c.getUrl())?.toString();
       if (_isBlankOrInvalidUrl(current)) {
         if (mounted) setState(() { _currentTargetUrl = url; _loading = true; _error = null; });
         widget.storage.setLastKnownTargetUrl(url);
-        await c.loadRequest(Uri.parse(url));
+        await c.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -1145,7 +1230,7 @@ class _WebViewScreenState extends State<WebViewScreen>
         if (targetUrl != null && targetUrl.trim().isNotEmpty && isValidHttpUrl(targetUrl.trim())) {
           if (mounted) setState(() { _currentTargetUrl = targetUrl.trim(); _loading = true; });
           widget.storage.setLastKnownTargetUrl(targetUrl.trim());
-          await c.loadRequest(Uri.parse(targetUrl.trim()));
+          await c.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl.trim())));
         } else {
           await c.reload();
         }
@@ -1153,14 +1238,14 @@ class _WebViewScreenState extends State<WebViewScreen>
         return;
       }
       if (action == 'clear_session') {
-        try { await c.runJavaScript(_clearStorageJs); } catch (_) {}
-        try { await c.clearLocalStorage(); } catch (_) {}
-        try { await WebViewCookieManager().clearCookies(); } catch (_) {}
+        try { await c.evaluateJavascript(source: _clearStorageJs); } catch (_) {}
+        try { await c.webStorage.localStorage.clear(); } catch (_) {}
+        try { await CookieManager.instance().deleteAllCookies(); } catch (_) {}
         await Future.delayed(const Duration(milliseconds: 300));
         if (targetUrl != null && targetUrl.trim().isNotEmpty && isValidHttpUrl(targetUrl.trim())) {
           if (mounted) setState(() { _currentTargetUrl = targetUrl.trim(); _loading = true; });
           widget.storage.setLastKnownTargetUrl(targetUrl.trim());
-          await c.loadRequest(Uri.parse(targetUrl.trim()));
+          await c.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl.trim())));
         } else {
           await c.reload();
         }
@@ -1169,17 +1254,17 @@ class _WebViewScreenState extends State<WebViewScreen>
       }
       if (action == 'logout_webview') {
         _log('logout action: try logout button/link');
-        try { await c.runJavaScript(_tryLogoutJs); } catch (_) {}
+        try { await c.evaluateJavascript(source: _tryLogoutJs); } catch (_) {}
         await Future.delayed(const Duration(milliseconds: 300));
         _log('logout action: clear cookies and storage');
-        try { await c.runJavaScript(_clearStorageJs); } catch (_) {}
-        try { await c.clearLocalStorage(); } catch (_) {}
-        try { await WebViewCookieManager().clearCookies(); } catch (_) {}
+        try { await c.evaluateJavascript(source: _clearStorageJs); } catch (_) {}
+        try { await c.webStorage.localStorage.clear(); } catch (_) {}
+        try { await CookieManager.instance().deleteAllCookies(); } catch (_) {}
         await Future.delayed(const Duration(milliseconds: 300));
         if (targetUrl != null && targetUrl.trim().isNotEmpty && isValidHttpUrl(targetUrl.trim())) {
           if (mounted) setState(() { _currentTargetUrl = targetUrl.trim(); _loading = true; _error = null; });
           widget.storage.setLastKnownTargetUrl(targetUrl.trim());
-          await c.loadRequest(Uri.parse(targetUrl.trim()));
+          await c.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl.trim())));
           _log('logout action: loaded login page (no white page)');
         } else {
           await c.reload();
@@ -1208,24 +1293,50 @@ class _WebViewScreenState extends State<WebViewScreen>
 
   Future<void> _showAdminMenu() async {
     final isAdmin = _isAdminMode;
-    final go = await showDialog<bool>(
+    /*
+     * Reload sits here beside Setup, and it reloads the PAGE rather than running
+     * the full refresh.
+     *
+     * The full sequence re-reads the tablet's configuration from the server first,
+     * which is the right thing when the target address has moved and the slow
+     * thing when it has not. In the hall the common case is a screen that has
+     * stopped responding, and there the fastest thing that works beats the most
+     * thorough one - so the quick path is the one on the menu, and the thorough
+     * one stays behind Retry on the error screen.
+     */
+    final go = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Admin'),
-        content: Text(isAdmin ? 'Exit admin view and return to setup.' : 'Open tablet setup.'),
+        content: Text(isAdmin
+            ? 'Reload the page, or exit admin view and return to setup.'
+            : 'Reload the page, or open tablet setup.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
             child: const Text('Cancel'),
           ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('reload'),
+            child: const Text('Reload page'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () => Navigator.of(ctx).pop('setup'),
             child: const Text('Open Setup'),
           ),
         ],
       ),
     );
-    if (go == true && mounted) {
+    if (go == 'reload') {
+      try {
+        await _controller?.reload();
+      } catch (_) {
+        // A controller that cannot reload is a controller that has no page; the
+        // error screen and its Retry are already the answer to that.
+      }
+      return;
+    }
+    if (go == 'setup' && mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => SetupScreen(
@@ -1240,13 +1351,28 @@ class _WebViewScreenState extends State<WebViewScreen>
     }
   }
 
+  /*
+   * One refresh, reached two ways: the Retry button and the pull.
+   *
+   * Deliberately the whole sequence and not controller.reload(). A tablet that
+   * needs refreshing in the hall is usually a tablet whose target url moved, and
+   * re-reading the config is the part that actually fixes it; a bare reload puts
+   * the same dead page back and looks like the refresh did nothing.
+   */
   Future<void> _refresh() async {
     setState(() {
       _error = null;
       _loading = true;
     });
     _socketService?.dispose();
-    _loadConfigAndWebView();
+    try {
+      await _loadConfigAndWebView();
+    } finally {
+      // The spinner belongs to the gesture, not to the page load: if the config
+      // call never answers there is no page event coming to end it, and it would
+      // sit there turning for the rest of the show.
+      await _pullToRefresh?.endRefreshing();
+    }
   }
 
 
@@ -1333,23 +1459,83 @@ class _WebViewScreenState extends State<WebViewScreen>
       child: Scaffold(
         body: Stack(
           children: [
-            if (_currentTargetUrl != null && _controller != null)
+            if (_currentTargetUrl != null)
               Positioned.fill(
-                child: WebViewWidget(controller: _controller!),
+                child: InAppWebView(
+                  initialUrlRequest: URLRequest(url: WebUri(_currentTargetUrl!)),
+                  initialSettings: InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                  ),
+                  pullToRefreshController: _pullToRefresh,
+                  onWebViewCreated: (c) => _controller = c,
+                  onLoadStart: (_, __) {
+                    if (!mounted) return;
+                    setState(() => _loading = true);
+                    _armLoadingWatchdog();
+                  },
+                  /*
+                   * The earlier of the two signals that the page is usable.
+                   *
+                   * onLoadStop waits for the load to COMPLETE; progress reaching
+                   * 100 says the document is there and drawn, which is all the
+                   * overlay was ever waiting for. A page still holding one open
+                   * request reaches 100 and never stops, and that is precisely
+                   * the case that used to trap the screen.
+                   */
+                  onProgressChanged: (_, progress) {
+                    if (progress < 100 || !mounted || !_loading) return;
+                    _clearLoadingWatchdog();
+                    setState(() => _loading = false);
+                  },
+                  onLoadStop: (_, url) async {
+                    await _pullToRefresh?.endRefreshing();
+                    await _onPageFinished(url);
+                  },
+                  /*
+                   * Main frame only.
+                   *
+                   * webview_flutter's onWebResourceError fired for the page;
+                   * this one fires for every resource that fails, so a missing
+                   * favicon or one dead image would have replaced a working
+                   * judge screen with a full-screen error. isForMainFrame is the
+                   * difference between "the page did not load" and "something on
+                   * it did not".
+                   */
+                  onReceivedError: (_, request, error) async {
+                    if (request.isForMainFrame != true) return;
+                    _clearLoadingWatchdog();
+                    await _pullToRefresh?.endRefreshing();
+                    if (!mounted) return;
+                    setState(() {
+                      _error = 'Page error: ${error.description}';
+                      _loading = false;
+                    });
+                  },
+                  onUpdateVisitedHistory: (_, url, __) => _onUrlChange(url?.toString()),
+                ),
               )
             else
               const Center(child: CircularProgressIndicator()),
-            if (_loading)
-              const Positioned.fill(
-                child: Center(
-                  child: Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-                ),
-              ),
+            /*
+             * NO LOADING CARD OVER A PAGE THAT IS ALREADY THERE.
+             *
+             * There used to be a Card with a spinner in the middle of the screen
+             * for the whole of every load. Two things were wrong with it, and the
+             * operator named both: it is a second spinner saying what the pull to
+             * refresh indicator at the top already says, and it covers the page
+             * while it says it. When a load did not report a clean finish it also
+             * stayed there for good - a working page behind a card nobody could
+             * dismiss, which is how a tablet got bricked mid-show on 25/09.
+             *
+             * Removed rather than fixed. A browser does not grey out the old page
+             * while the new one loads either; the pull indicator is the feedback,
+             * and the page underneath stays readable the whole time.
+             *
+             * _loading itself stays - it still tells the error screen below
+             * whether a load is in flight - and the watchdog still keeps it
+             * honest. Neither of them draws anything any more.
+             */
             if (_locationPermissionGranted != true) _buildPermissionBanner(context),
             Positioned(
               top: 0,

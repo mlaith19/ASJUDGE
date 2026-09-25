@@ -36,7 +36,20 @@ function create(data) {
     color = s.startsWith('#') ? hexToKey(s) : (isValidKey(s) ? s.toLowerCase() : '');
   }
   const username = sanitizeString(data.username || '', 100);
-  const password = typeof data.password === 'string' ? data.password : '';
+  /*
+   * NOT the caller's password. Always empty.
+   *
+   * This column used to hold the judge's password in clear text so the server
+   * could send it to a tablet and have the app type it into the login form. That
+   * was removed from the tablet side months ago; this was the last thing still
+   * putting a password into the database, and it kept doing it every time a judge
+   * was added from the admin screen.
+   *
+   * The scoring site holds the real credential, scrypt-hashed. There is nothing
+   * this server needs a password for, so it stores none - and db/init.js empties
+   * whatever is already there on every boot.
+   */
+  const password = '';
   let letter = (data.judge_letter || '').toString().trim().toUpperCase();
   if (letter && letter.length >= 2) {
     if (letter.length > 10) throw new Error('Judge code must be 2–10 characters');
@@ -94,9 +107,11 @@ function update(id, data) {
     updates.push('username = ?');
     params.push(sanitizeString(String(data.username), 100));
   }
+  // data.password is accepted and DISCARDED - see the note in create(). An older
+  // admin form still posts the field; it must not become a stored password again.
   if (data.password !== undefined) {
     updates.push('password = ?');
-    params.push(typeof data.password === 'string' ? data.password : '');
+    params.push('');
   }
   if (data.judge_type !== undefined) {
     const t = ['JUDGE','RG','DC','SPEAKER','SCREEN','ADMIN'].includes((data.judge_type || '').toUpperCase())
