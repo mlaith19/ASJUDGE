@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -115,6 +116,30 @@ class EvidenceCapture {
       await f.parent.create(recursive: true);
       await f.writeAsBytes(bytes, flush: true);
 
+      /*
+       * THE SIDECAR IS WHAT MAKES THIS FILE RE-SENDABLE.
+       *
+       * Everything the upload needs - show, class, horse, the submission id, the
+       * moment it was sent - arrives from the page and exists nowhere else. A
+       * .jpg on its own cannot be uploaded later because nobody would know what
+       * it is of.
+       *
+       * Its presence is also the state: a .json beside a .jpg means NOT YET
+       * ACKNOWLEDGED BY THE SERVER. The page deletes it through ack() once the
+       * upload is stored, and the 48-hour cleanup steps over any file that still
+       * has one. So a photograph that never reached the server is never deleted
+       * for being old - it waits.
+       */
+      try {
+        await File('$path.json').writeAsString(jsonEncode({
+          ...moment,
+          'capturedMs': sw.elapsedMilliseconds,
+        }), flush: true);
+      } catch (_) {
+        // The image is on the disk and the page is about to upload it anyway.
+        // A missing sidecar costs the retry, not the evidence.
+      }
+
       return _remember(EvidenceShot(
         ok: true,
         ms: sw.elapsedMilliseconds,
@@ -154,6 +179,77 @@ class EvidenceCapture {
    */
   static const Duration keepFor = Duration(hours: 48);
 
+  static Future<Directory?> _root() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final d = Directory('${docs.path}${Platform.pathSeparator}evidence');
+      return d.existsSync() ? d : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sidecars, oldest first - the ones still waiting to reach the server.
+  static Future<List<File>> _pending() async {
+    final root = await _root();
+    if (root == null) return const [];
+    final out = <File>[];
+    try {
+      await for (final e in root.list(recursive: true, followLinks: false)) {
+        if (e is File && e.path.endsWith('.jpg.json')) out.add(e);
+      }
+      out.sort((a, b) => a.path.compareTo(b.path));
+    } catch (_) {}
+    return out;
+  }
+
+  static Future<int> pendingCount() async => (await _pending()).length;
+
+  /*
+   * ONE waiting photograph, for the page to upload.
+   *
+   * One, not all of them. A class gives a send every minute or two, so twelve
+   * horses are twelve chances to drain - while handing over ten images at once
+   * would push five megabytes across the bridge in the middle of a class, at
+   * exactly the moment the network has already shown it is unreliable.
+   */
+  static Future<Map<String, dynamic>?> nextPending() async {
+    for (final side in await _pending()) {
+      try {
+        final meta = jsonDecode(await side.readAsString()) as Map<String, dynamic>;
+        final jpg = File(side.path.substring(0, side.path.length - 5));
+        if (!jpg.existsSync()) {
+          // The sidecar outlived its image - nothing to send, so stop tracking it.
+          try { await side.delete(); } catch (_) {}
+          continue;
+        }
+        return {
+          'meta': meta,
+          'b64': base64Encode(await jpg.readAsBytes()),
+        };
+      } catch (_) {
+        // A sidecar that cannot be read is not a reason to stop draining.
+      }
+    }
+    return null;
+  }
+
+  /// The server has it. Drop the sidecar; the image stays until it ages out.
+  static Future<bool> ack(String id) async {
+    final want = id.trim();
+    if (want.isEmpty) return false;
+    for (final side in await _pending()) {
+      try {
+        final meta = jsonDecode(await side.readAsString()) as Map<String, dynamic>;
+        if ((meta['id'] ?? '').toString().trim() == want) {
+          await side.delete();
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
   static Future<int> pruneOld() async {
     var removed = 0;
     try {
@@ -165,6 +261,13 @@ class EvidenceCapture {
       await for (final e in root.list(recursive: true, followLinks: false)) {
         if (e is! File) continue;
         try {
+          /*
+           * A file that still has a sidecar has not reached the server. Age is
+           * not a reason to delete it - the whole point of keeping anything here
+           * is that the server has the copy that matters, and for this one it
+           * does not. It waits instead, and the next send drags it along.
+           */
+          if (e.path.endsWith('.jpg') && File('${e.path}.json').existsSync()) continue;
           if ((await e.lastModified()).isBefore(cutoff)) {
             await e.delete();
             removed++;

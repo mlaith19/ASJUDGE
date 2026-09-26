@@ -1161,6 +1161,43 @@ class _WebViewScreenState extends State<WebViewScreen>
         }
       },
     );
+    /*
+      * THE OUTBOX, DRAINED BY THE PAGE.
+      *
+      * The upload cannot happen here: only the WebView holds the judge's session
+      * cookie, and the decided design adds no second way to authenticate. So the
+      * shell keeps the queue and the page empties it - one item per send, plus
+      * once when the judging page loads.
+      */
+    c.addJavaScriptHandler(
+      handlerName: 'evidenceNextPending',
+      callback: (args) async {
+        try {
+          final item = await EvidenceCapture.nextPending();
+          if (item == null) return {'ok': true, 'item': null};
+          return {'ok': true, 'item': item};
+        } catch (e) {
+          _log('[EVIDENCE] nextPending error: $e');
+          return {'ok': false, 'item': null};
+        }
+      },
+    );
+
+    c.addJavaScriptHandler(
+      handlerName: 'evidenceAck',
+      callback: (args) async {
+        try {
+          final id = (args.isNotEmpty ? args.first : '').toString();
+          final done = await EvidenceCapture.ack(id);
+          _log('[EVIDENCE] ack $id -> $done');
+          return {'ok': done};
+        } catch (e) {
+          _log('[EVIDENCE] ack error: $e');
+          return {'ok': false};
+        }
+      },
+    );
+
     _log('[EVIDENCE] handler installed');
   }
 
