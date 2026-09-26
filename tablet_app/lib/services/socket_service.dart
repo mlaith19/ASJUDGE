@@ -322,6 +322,31 @@ class SocketService with WidgetsBindingObserver {
     _lastEvidenceSummary = summary.trim();
   }
 
+  /*
+   * WHAT CAME OF THE LAST CAPTURE.
+   *
+   * Separate from the summary above, and not folded into it, because the server
+   * stamps the evidence time only when the SUMMARY changes - the tablet repeats
+   * the same line every three seconds. The shot result arrives about two seconds
+   * after the summary and carries the same horse, so putting it in there would
+   * either re-stamp a moment that has not moved or be dropped for looking
+   * unchanged.
+   *
+   * The milliseconds are the point of this stage. The decision of 26/09 to rely
+   * on the capture finishing before the admin pushes the next horse rests on two
+   * seconds against three, and two seconds was an estimate. This is the
+   * measurement.
+   */
+  String _lastShotStatus = '';
+  int? _lastShotMs;
+  String _lastShotFile = '';
+
+  void setLastShot({required String status, required int ms, String? file}) {
+    _lastShotStatus = status.trim();
+    _lastShotMs = ms;
+    _lastShotFile = (file ?? '').trim();
+  }
+
   /// 'ok' | 'missing' | 'no-callHandler' | 'error' | 'probe-failed' | ''
   /// Set once per page load by _probeEvidenceBridge - see the note there.
   String _bridgeStatus = '';
@@ -378,6 +403,9 @@ class SocketService with WidgetsBindingObserver {
       'signedInJudgeName': _signedInName,
       if (_lastEvidenceSummary.isNotEmpty) 'lastEvidence': _lastEvidenceSummary,
       if (_bridgeStatus.isNotEmpty) 'evidenceBridge': _bridgeStatus,
+      if (_lastShotStatus.isNotEmpty) 'evidenceShot': _lastShotStatus,
+      if (_lastShotMs != null) 'evidenceShotMs': _lastShotMs,
+      if (_lastShotFile.isNotEmpty) 'evidenceShotFile': _lastShotFile,
       ...merged,
     };
     try {

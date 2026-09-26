@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import 'services/storage_service.dart';
 import 'services/kiosk_service.dart';
+import 'services/evidence_capture.dart';
 import 'screens/backend_resolver_screen.dart';
 import 'screens/webview_screen.dart';
 
@@ -101,6 +103,17 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
     final theme = Theme.of(ctx2);
     final canLogout = WebViewScreen.logoutHook != null;
 
+    /*
+     * Stage 2 of the evidence capture keeps its files on this tablet and uploads
+     * nothing, so this menu is the only place the image can actually be looked
+     * at - and looking at it is the entire check the stage exists for: does the
+     * screenshot show the horse that was sent, or the one after it.
+     *
+     * Shown for a failed attempt too. A capture that did not happen is the
+     * failure that otherwise looks exactly like a quiet afternoon.
+     */
+    final lastShot = EvidenceCapture.last;
+
     final result = await showDialog<String>(
       context: ctx2,
       barrierDismissible: true,
@@ -161,6 +174,18 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
               tone: pinned ? _RowTone.normal : _RowTone.primary,
               onTap: () => Navigator.of(dialogCtx).pop(pinned ? 'unlock' : 'lock'),
             ),
+            if (lastShot != null) ...[
+              const SizedBox(height: 8),
+              _MenuRow(
+                icon: lastShot.ok ? Icons.photo_camera_back : Icons.broken_image,
+                label: 'Last capture',
+                detail: lastShot.ok
+                    ? '${lastShot.fileName} - ${lastShot.ms}ms'
+                    : 'Failed after ${lastShot.ms}ms: ${lastShot.error ?? 'unknown'}',
+                tone: _RowTone.normal,
+                onTap: () => Navigator.of(dialogCtx).pop('shot'),
+              ),
+            ],
             if (canLogout) ...[
               const SizedBox(height: 8),
               _MenuRow(
@@ -189,7 +214,61 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
       await _kioskService.startLockTask();
     } else if (result == 'logout') {
       await WebViewScreen.logoutHook?.call();
+    } else if (result == 'shot') {
+      await _showLastCapture();
     }
+  }
+
+  /// The last evidence frame, full width, with what it was written as.
+  ///
+  /// The file name carries the horse number and name that the page announced
+  /// BEFORE it changed any state. So the check is read off one screen: the number
+  /// in the name against the horse in the picture.
+  Future<void> _showLastCapture() async {
+    final shot = EvidenceCapture.last;
+    final ctx = _navigatorKey.currentContext;
+    if (shot == null || ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Last capture',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                shot.fileName.isEmpty ? '(no file)' : shot.fileName,
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text('${shot.status} - ${shot.ms}ms'
+                  '${shot.error != null ? ' - ${shot.error}' : ''}'),
+              const SizedBox(height: 12),
+              if (shot.ok && shot.file != null)
+                Image.file(
+                  File(shot.file!),
+                  fit: BoxFit.contain,
+                  // A file that was written and then removed under us would
+                  // otherwise throw inside the build.
+                  errorBuilder: (_, __, ___) =>
+                      const Text('The file is no longer readable.'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

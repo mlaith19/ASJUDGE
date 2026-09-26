@@ -52,6 +52,20 @@ const lastEvidenceByDeviceId = new Map();
  * photograph nothing all day".
  */
 const evidenceBridgeByDeviceId = new Map();
+
+/*
+ * What came of the last capture, per device: { status, ms, file }.
+ *
+ * Its own map and not folded into lastEvidenceByDeviceId, because that entry is
+ * stamped only when the SUMMARY changes and the shot result arrives about two
+ * seconds later carrying the same horse. Merged in, it would either re-stamp a
+ * moment that has not moved or be dropped for looking unchanged.
+ *
+ * The milliseconds are why this exists. Relying on the capture finishing before
+ * the admin pushes the next horse rests on two seconds against three, and two
+ * seconds was an estimate. This makes it a measurement.
+ */
+const lastShotByDeviceId = new Map();
 /** deviceId: tablet is on the setup/assign screen (registered with empty judgeLetter or heartbeat says setup_screen). */
 const tabletInSetupByDeviceId = new Set();
 /** deviceId: tablet registered as Admin View (__ADMIN__). Receives admin_alert commands. */
@@ -246,6 +260,7 @@ function buildDashboardState() {
         loginStatus,
         last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
         evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
+        last_shot: (lastShotByDeviceId.get(t.device_id) || null),
       },
     };
   });
@@ -289,6 +304,7 @@ function buildTabletsListState() {
     app_active: (lastAppActiveByDeviceId.has(t.device_id) ? lastAppActiveByDeviceId.get(t.device_id) : null),
     last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
     evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
+    last_shot: (lastShotByDeviceId.get(t.device_id) || null),
   }));
   let onlineCount = 0;
   withLive.forEach((t) => { if (t.isLiveOnline) onlineCount++; });
@@ -537,6 +553,7 @@ function onTabletDisconnected(deviceId) {
   // the same lie as an is_online flag nobody cleared.
   lastEvidenceByDeviceId.delete(deviceId);
   evidenceBridgeByDeviceId.delete(deviceId);
+  lastShotByDeviceId.delete(deviceId);
   signedInJudgeByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
@@ -775,6 +792,24 @@ function init(httpServer, sessionMiddleware) {
           if (!prev || prev.summary !== summary) {
             lastEvidenceByDeviceId.set(devId, { summary, atMs: Date.now() });
           }
+        }
+        /*
+         * Overwritten on every report rather than only on change: unlike the
+         * summary, this is not a moment being dated - it is the outcome of the
+         * most recent attempt, and the most recent one is the answer.
+         */
+        const shot = payload.evidenceShot ?? payload.evidence_shot;
+        if (shot != null && String(shot).trim() !== '') {
+          const msRaw = payload.evidenceShotMs ?? payload.evidence_shot_ms;
+          const ms = msRaw != null ? parseInt(String(msRaw), 10) : NaN;
+          const file = payload.evidenceShotFile ?? payload.evidence_shot_file;
+          lastShotByDeviceId.set(devId, {
+            status: String(shot).trim().slice(0, 12),
+            ms: Number.isNaN(ms) ? null : ms,
+            file: (file != null && String(file).trim() !== '')
+              ? String(file).trim().slice(0, 80)
+              : null,
+          });
         }
       } catch (_) {}
       try {

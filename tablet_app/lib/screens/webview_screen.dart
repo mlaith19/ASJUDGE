@@ -28,6 +28,7 @@ import '../models/tablet_config.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/device_info_service.dart';
+import '../services/evidence_capture.dart';
 import '../services/kiosk_service.dart';
 import '../services/heartbeat_telemetry.dart';
 import '../services/socket_service.dart';
@@ -1078,12 +1079,13 @@ class _WebViewScreenState extends State<WebViewScreen>
    * the camera the way this evidence needs it. Flutter can do both. So the page
    * announces the moment and this side does the work.
    *
-   * STAGE 1 OF THE PLAN, AND DELIBERATELY EMPTY.
-   * Right now it only writes down what it was told. No screenshot, no camera, no
-   * upload - those are stages 2, 3 and 4. What is being proven here is that the
-   * call arrives at all, and arrives with the right horse on it. Building the
-   * capture on top of a bridge nobody had watched work would mean debugging two
-   * new things at once, on a tablet, in a hall.
+   * STAGE 2: THE SCREENSHOT. Stage 1, the bridge, was measured working on
+   * 25/09 - 'ok' on the probe and the right horse on the line - which is why
+   * there is a capture standing on it now.
+   *
+   * Still no camera and no upload; those are stages 4 and 3. The file stays on
+   * this tablet, and the one thing this stage exists to prove is that the image
+   * shows the horse that was SENT and not the one after it.
    *
    * It answers, always. The page does not wait for the answer, but a handler that
    * throws would surface in the page's console as a rejected promise, and this
@@ -1111,7 +1113,27 @@ class _WebViewScreenState extends State<WebViewScreen>
           final who = (payload['judgeNickname'] ?? '').toString();
           _socketService?.setLastEvidence('#$horse $who');
 
-          return {'ok': true, 'stage': 1};
+          /*
+           * NOT AWAITED, AND THAT IS THE POINT.
+           *
+           * takeScreenshot takes about two seconds. Awaiting it here would hold
+           * the handler open for those two seconds, and the one rule this whole
+           * feature answers to is that nothing it does can be felt on the scoring
+           * screen. The page does not read the answer anyway.
+           *
+           * The race this leaves is known and was decided on 26/09: the judge
+           * cannot change horse at all - judgeLocked defaults to true and the
+           * horse strip does not respond - so the only thing that can replace the
+           * screen is the admin pushing the next horse, about three seconds out.
+           * Two against three, with this call already the first thing handleSend
+           * does. No navigation lock and no after-the-fact verification.
+           *
+           * What is NOT assumed is the two seconds. The measured time rides the
+           * heartbeat, so the margin becomes a number instead of an estimate.
+           */
+          unawaited(_captureEvidenceShot(c, payload));
+
+          return {'ok': true, 'stage': 2};
         } catch (e) {
           // Swallowed on purpose: see the note above. A broken bridge is a
           // missing photograph, never a disturbed judge.
@@ -1121,6 +1143,26 @@ class _WebViewScreenState extends State<WebViewScreen>
       },
     );
     _log('[EVIDENCE] handler installed');
+  }
+
+  /// Takes the shot and reports the outcome on the heartbeat.
+  ///
+  /// Failure is recorded, never raised: what was decided is that the score always
+  /// goes and a missing photograph has to be VISIBLE rather than fatal. A row on
+  /// the management screen reading 'failed' is that visibility.
+  Future<void> _captureEvidenceShot(
+    InAppWebViewController c,
+    Map<String, dynamic> payload,
+  ) async {
+    final shot = await EvidenceCapture.capture(controller: c, moment: payload);
+    _log('[EVIDENCE] shot ${shot.status} in ${shot.ms}ms'
+        '${shot.file != null ? ' -> ${shot.fileName}' : ''}'
+        '${shot.error != null ? ' (${shot.error})' : ''}');
+    _socketService?.setLastShot(
+      status: shot.status,
+      ms: shot.ms,
+      file: shot.fileName,
+    );
   }
 
   /*
