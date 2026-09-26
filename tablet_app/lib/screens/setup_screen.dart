@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config/judge_colors.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/device_info_service.dart';
 import '../services/heartbeat_telemetry.dart';
+import '../services/evidence_capture.dart';
 import '../services/socket_service.dart';
 import 'webview_screen.dart';
 
@@ -45,6 +49,48 @@ class _SetupScreenState extends State<SetupScreen> {
   String? _error;
   bool _showJudgeInvalidatedBanner = false;
   SocketService? _socketService;
+
+  /*
+   * THE CAMERA CHECK, AND WHY IT LIVES HERE.
+   *
+   * Two things about the front camera can only be settled at installation, and
+   * both of them are impossible in a hall:
+   *
+   *   - Android asks for the camera permission once, with a dialog. Inside a
+   *     class the tablet is pinned in kiosk mode and there is nobody to answer
+   *     it, so the answer has to be given here, by whoever sets the tablet up.
+   *   - These tablets sit on angled stands and nobody has ever seen what the
+   *     front camera gets from there. It could be a judge, half a face, or a
+   *     ceiling. A single test frame on this screen answers it.
+   */
+  Uint8List? _camTestShot;
+  bool _camBusy = false;
+  String? _camNote;
+
+  Future<void> _runCameraCheck() async {
+    setState(() { _camBusy = true; _camNote = null; });
+    try {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        setState(() {
+          _camNote = status.isPermanentlyDenied
+              ? 'Camera permission is blocked. Open Android settings for this app and allow it.'
+              : 'Camera permission was not granted.';
+        });
+        return;
+      }
+      final bytes = await EvidenceCapture.testShot();
+      if (!mounted) return;
+      setState(() {
+        _camTestShot = bytes;
+        _camNote = bytes == null ? 'No camera answered on this tablet.' : null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _camNote = 'Camera check failed: $e');
+    } finally {
+      if (mounted) setState(() => _camBusy = false);
+    }
+  }
 
   @override
   void initState() {
@@ -499,6 +545,55 @@ class _SetupScreenState extends State<SetupScreen> {
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onErrorContainer,
                           ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.photo_camera_outlined, size: 20),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Camera check',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          ),
+                        ),
+                        OutlinedButton(
+                          onPressed: _camBusy ? null : _runCameraCheck,
+                          child: _camBusy
+                              ? const SizedBox(
+                                  height: 18, width: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text(_camTestShot == null ? 'Test shot' : 'Again'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Grants the camera permission and shows what the front camera sees from this stand. Do it here - a class cannot answer a permission dialog.',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                    if (_camNote != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _camNote!,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red),
+                      ),
+                    ],
+                    if (_camTestShot != null) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.memory(
+                          _camTestShot!,
+                          fit: BoxFit.contain,
+                          // Rebuilt on every retake, so the decoded frame is not
+                          // kept alive by the image cache behind the new one.
+                          gaplessPlayback: false,
                         ),
                       ),
                     ],

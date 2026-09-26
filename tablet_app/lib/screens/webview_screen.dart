@@ -192,6 +192,10 @@ class _WebViewScreenState extends State<WebViewScreen>
         break;
       case AppLifecycleState.paused:
         _foregroundState = 'background';
+        // Android reclaims the camera on the way out whether or not it is
+        // offered. An app that keeps hold of it can come back without one for
+        // good, so it goes back here every time.
+        unawaited(EvidenceCapture.releaseCamera());
         break;
       case AppLifecycleState.detached:
         _foregroundState = 'detached';
@@ -1131,6 +1135,14 @@ class _WebViewScreenState extends State<WebViewScreen>
            * What is NOT assumed is the two seconds. The measured time rides the
            * heartbeat, so the margin becomes a number instead of an estimate.
            */
+          /*
+            * Stage 4a: the show's CAM switch decides whether the sensor is held
+            * open at all. Nothing is photographed with it yet - this exists so
+            * the battery and heat cost can be read off the dashboard before the
+            * rest of it is built.
+            */
+          unawaited(EvidenceCapture.setCameraOpen(payload['camera'] == true));
+
           final shot = await _captureEvidenceShot(c, payload);
 
           /*

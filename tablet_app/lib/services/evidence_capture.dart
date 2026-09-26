@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:camera/camera.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -177,6 +178,102 @@ class EvidenceCapture {
    * Failures are swallowed per file. A locked or vanished file is not a reason
    * to stop cleaning up the rest, and none of this is worth a word on screen.
    */
+  /*
+   * THE FRONT CAMERA - STAGE 4a, AND DELIBERATELY DOING ALMOST NOTHING.
+   *
+   * All this does is hold the sensor open while the show's CAM switch is on. It
+   * takes no photograph, composes nothing, and the evidence is exactly what it
+   * was without it.
+   *
+   * That is the point. An initialised camera is a powered sensor - a lit
+   * indicator, current, and heat - and nobody has measured what that costs on
+   * these tablets. They report 29-30C today against a 40C alert, and the
+   * telemetry already sends battery and temperature every three seconds. So one
+   * class with the switch off and one with it on is the whole experiment, and it
+   * needs no instrument that does not already exist.
+   *
+   * The lifecycle that was decided - open on the first send of a class, close
+   * after three quiet minutes - is NOT here. It is stage 4b, and it should be
+   * written against a number rather than against a guess about one.
+   */
+  static CameraController? _cam;
+
+  static bool get cameraOpen => _cam?.value.isInitialized == true;
+
+  static Future<CameraDescription?> _frontCamera() async {
+    try {
+      final cams = await availableCameras();
+      if (cams.isEmpty) return null;
+      for (final c in cams) {
+        if (c.lensDirection == CameraLensDirection.front) return c;
+      }
+      // No front camera is not a failure to report loudly - it is a tablet that
+      // will produce screen evidence and no face, which the dashboard shows.
+      return cams.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> setCameraOpen(bool on) async {
+    if (!on) {
+      await releaseCamera();
+      return;
+    }
+    if (cameraOpen) return;
+    try {
+      final desc = await _frontCamera();
+      if (desc == null) return;
+      /*
+       * Low, not high. A face at 480p is enough to say who is holding the
+       * tablet, and that is all this half of the evidence has to do. Higher
+       * costs more current, more heat, more time to compose and more disk, and
+       * buys nothing that would be looked at.
+       */
+      final c = CameraController(
+        desc,
+        ResolutionPreset.low,
+        enableAudio: false,
+      );
+      await c.initialize();
+      _cam = c;
+    } catch (_) {
+      _cam = null;
+    }
+  }
+
+  /*
+   * Android takes the camera away when the app leaves the foreground whether or
+   * not it is asked. An app that does not hand it back can come up without a
+   * camera for the rest of its life, so this is called from the lifecycle
+   * handler - not an optimisation, a requirement.
+   */
+  static Future<void> releaseCamera() async {
+    final c = _cam;
+    _cam = null;
+    try { await c?.dispose(); } catch (_) {}
+  }
+
+  /// One frame, for the Setup screen. Opens, shoots, and puts it back as it was.
+  ///
+  /// The tablets sit on angled stands and nobody knows what the front camera
+  /// actually sees from there - ceiling, half a face, or the judge. This is how
+  /// that is found out at installation instead of in a hall.
+  static Future<Uint8List?> testShot() async {
+    final wasOpen = cameraOpen;
+    try {
+      if (!wasOpen) await setCameraOpen(true);
+      final c = _cam;
+      if (c == null || !c.value.isInitialized) return null;
+      final file = await c.takePicture();
+      return await file.readAsBytes();
+    } catch (_) {
+      return null;
+    } finally {
+      if (!wasOpen) await releaseCamera();
+    }
+  }
+
   static const Duration keepFor = Duration(hours: 48);
 
   static Future<Directory?> _root() async {
