@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'telemetry_debug_log.dart';
@@ -355,6 +356,35 @@ class SocketService with WidgetsBindingObserver {
     _bridgeStatus = status.trim();
   }
 
+  /*
+   * WHICH BUILD THIS TABLET IS RUNNING.
+   *
+   * Read from the installed package, never from a constant in the source: a
+   * constant is a number somebody has to remember to change, and the first time
+   * it is forgotten the dashboard reports a version that is not there.
+   *
+   * The package name comes with it, and it is the part that matters here. V2 was
+   * given its own applicationId so both versions could live on one tablet, and
+   * the package name is the only thing that says which of the two is on screen.
+   *
+   * Read once. It cannot change without the process restarting.
+   */
+  String _appVersion = '';
+  String _appPackage = '';
+
+  Future<void> _ensureAppInfo() async {
+    if (_appVersion.isNotEmpty) return;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = '${info.version}+${info.buildNumber}';
+      _appPackage = info.packageName;
+    } catch (_) {
+      // Left empty on purpose. The dashboard reads an absent version as a build
+      // too old to report one, which is true here as well: something is wrong
+      // with this tablet's shell, and that is worth seeing.
+    }
+  }
+
   /// For DEBUG: keys that will be merged into next emit.
   List<String> debugLastPayloadKeys() => _lastHeartbeatPayload.keys.toList();
 
@@ -364,6 +394,7 @@ class SocketService with WidgetsBindingObserver {
 
   Future<void> _emitHeartbeatWithPayloadAsync() async {
     if (_socket?.connected != true) return;
+    await _ensureAppInfo();
     final sentAt = DateTime.now().millisecondsSinceEpoch;
     Map<String, dynamic> telem = {};
     if (gatherTelemetryForEmit != null) {
@@ -403,6 +434,8 @@ class SocketService with WidgetsBindingObserver {
       'signedInJudgeName': _signedInName,
       if (_lastEvidenceSummary.isNotEmpty) 'lastEvidence': _lastEvidenceSummary,
       if (_bridgeStatus.isNotEmpty) 'evidenceBridge': _bridgeStatus,
+      if (_appVersion.isNotEmpty) 'appVersion': _appVersion,
+      if (_appPackage.isNotEmpty) 'appPackage': _appPackage,
       if (_lastShotStatus.isNotEmpty) 'evidenceShot': _lastShotStatus,
       if (_lastShotMs != null) 'evidenceShotMs': _lastShotMs,
       if (_lastShotFile.isNotEmpty) 'evidenceShotFile': _lastShotFile,

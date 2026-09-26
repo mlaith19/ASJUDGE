@@ -11,7 +11,7 @@ publish_to: 'none'
 # applicationId note in android/app/build.gradle. Its build numbers are therefore
 # their own series and have nothing to do with the 1.x running in the hall; the
 # two never install over each other.
-version: 2.0.2+3
+version: 2.0.3+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -35,6 +35,9 @@ dependencies:
   # Where the evidence files go. Stage 2 of the capture plan - the tablet
   # keeps them itself until the upload exists.
   path_provider: ^2.1.3
+  # So the tablet reports the build it is actually running, read from the
+  # installed package rather than a constant that drifts from pubspec.
+  package_info_plus: ^8.0.0
   permission_handler: ^11.3.0
   vibration: ^2.0.0
   flutter_ringtone_player: ^4.0.0

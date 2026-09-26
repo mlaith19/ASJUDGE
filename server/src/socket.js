@@ -66,6 +66,19 @@ const evidenceBridgeByDeviceId = new Map();
  * seconds was an estimate. This makes it a measurement.
  */
 const lastShotByDeviceId = new Map();
+
+/*
+ * Which build each tablet is running: { version, pkg }.
+ *
+ * V2 was given its own applicationId so it could sit beside V1 on the same
+ * tablet and V1 stay available as the way back. The cost of that was that
+ * nothing on the management screen said which of the two a judge had in front
+ * of him.
+ *
+ * A tablet that reports nothing here is running a build from before this
+ * existed. That is not a gap in the data - it is the answer.
+ */
+const appBuildByDeviceId = new Map();
 /** deviceId: tablet is on the setup/assign screen (registered with empty judgeLetter or heartbeat says setup_screen). */
 const tabletInSetupByDeviceId = new Set();
 /** deviceId: tablet registered as Admin View (__ADMIN__). Receives admin_alert commands. */
@@ -261,6 +274,7 @@ function buildDashboardState() {
         last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
         evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
         last_shot: (lastShotByDeviceId.get(t.device_id) || null),
+        app_build: (appBuildByDeviceId.get(t.device_id) || null),
       },
     };
   });
@@ -305,6 +319,7 @@ function buildTabletsListState() {
     last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
     evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
     last_shot: (lastShotByDeviceId.get(t.device_id) || null),
+    app_build: (appBuildByDeviceId.get(t.device_id) || null),
   }));
   let onlineCount = 0;
   withLive.forEach((t) => { if (t.isLiveOnline) onlineCount++; });
@@ -554,6 +569,7 @@ function onTabletDisconnected(deviceId) {
   lastEvidenceByDeviceId.delete(deviceId);
   evidenceBridgeByDeviceId.delete(deviceId);
   lastShotByDeviceId.delete(deviceId);
+  appBuildByDeviceId.delete(deviceId);
   signedInJudgeByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
@@ -766,6 +782,16 @@ function init(httpServer, sessionMiddleware) {
         const lat = payload.latency_ms ?? payload.latencyMs;
         const latNum = lat != null ? parseInt(String(lat), 10) : NaN;
         if (!Number.isNaN(latNum)) lastLatencyMsByDeviceId.set(devId, latNum);
+      } catch (_) {}
+      try {
+        const ver = payload.appVersion ?? payload.app_version;
+        const pkg = payload.appPackage ?? payload.app_package;
+        if ((ver != null && String(ver).trim() !== '') || (pkg != null && String(pkg).trim() !== '')) {
+          appBuildByDeviceId.set(devId, {
+            version: (ver != null && String(ver).trim() !== '') ? String(ver).trim().slice(0, 24) : null,
+            pkg: (pkg != null && String(pkg).trim() !== '') ? String(pkg).trim().slice(0, 64) : null,
+          });
+        }
       } catch (_) {}
       try {
         const br = payload.evidenceBridge ?? payload.evidence_bridge;
