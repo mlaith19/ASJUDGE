@@ -1094,7 +1094,7 @@ class _WebViewScreenState extends State<WebViewScreen>
   void _installEvidenceHandler(InAppWebViewController c) {
     c.addJavaScriptHandler(
       handlerName: 'captureEvidence',
-      callback: (args) {
+      callback: (args) async {
         try {
           final payload = (args.isNotEmpty && args.first is Map)
               ? Map<String, dynamic>.from(args.first as Map)
@@ -1131,9 +1131,28 @@ class _WebViewScreenState extends State<WebViewScreen>
            * What is NOT assumed is the two seconds. The measured time rides the
            * heartbeat, so the margin becomes a number instead of an estimate.
            */
-          unawaited(_captureEvidenceShot(c, payload));
+          final shot = await _captureEvidenceShot(c, payload);
 
-          return {'ok': true, 'stage': 2};
+          /*
+           * The bytes go back to the page, which uploads them.
+           *
+           * Only the WebView holds the judge's session cookie, so the page is
+           * the only side that can post to the scoring server without a new
+           * secret being put on this tablet. It costs a base64 string of about
+           * half a megabyte across the bridge, and that is the cheaper half of
+           * the trade.
+           *
+           * Awaited now, where stage 2 did not: the page needs an answer. It
+           * still does not wait for it - see lib/evidence-bridge.ts - so the
+           * judge feels nothing either way.
+           */
+          return {
+            'ok': shot.ok,
+            'stage': 3,
+            'ms': shot.ms,
+            if (shot.ok && shot.bytes != null) 'b64': base64Encode(shot.bytes!),
+            if (shot.error != null) 'error': shot.error,
+          };
         } catch (e) {
           // Swallowed on purpose: see the note above. A broken bridge is a
           // missing photograph, never a disturbed judge.
@@ -1150,7 +1169,7 @@ class _WebViewScreenState extends State<WebViewScreen>
   /// Failure is recorded, never raised: what was decided is that the score always
   /// goes and a missing photograph has to be VISIBLE rather than fatal. A row on
   /// the management screen reading 'failed' is that visibility.
-  Future<void> _captureEvidenceShot(
+  Future<EvidenceShot> _captureEvidenceShot(
     InAppWebViewController c,
     Map<String, dynamic> payload,
   ) async {
@@ -1163,6 +1182,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       ms: shot.ms,
       file: shot.fileName,
     );
+    return shot;
   }
 
   /*

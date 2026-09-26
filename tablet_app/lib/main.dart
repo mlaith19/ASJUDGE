@@ -57,12 +57,26 @@ class _TabletMonitorAppState extends State<TabletMonitorApp> {
       final alreadyPinned = await _kioskService.isLockTaskMode();
       if (!alreadyPinned) await _kioskService.startLockTask();
     });
+
+    /*
+     * The evidence staged on this tablet is cleared at 48 hours - the server has
+     * the copy that counts. Run at startup and then a few times a day, because a
+     * tablet in a hall can stay up for a week without being restarted.
+     *
+     * Six hours rather than on every capture: the whole tree is walked, and
+     * doing that in the same breath as a judge pressing SEND buys nothing.
+     */
+    EvidenceCapture.pruneOld();
+    _pruneTimer = Timer.periodic(const Duration(hours: 6), (_) => EvidenceCapture.pruneOld());
   }
+
+  Timer? _pruneTimer;
 
   @override
   void dispose() {
     _kioskService.setKeepScreenOn(false);
     _colorTapTimer?.cancel();
+    _pruneTimer?.cancel();
     super.dispose();
   }
 

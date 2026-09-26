@@ -11,6 +11,7 @@ class EvidenceShot {
     required this.ms,
     this.file,
     this.error,
+    this.bytes,
   });
 
   /// Whether a file ended up on the disk.
@@ -27,6 +28,19 @@ class EvidenceShot {
 
   final String? file;
   final String? error;
+
+  /*
+   * The image itself, for the one caller that has to hand it to the page.
+   *
+   * Deliberately NOT kept in EvidenceCapture.last. That field lives for as long
+   * as the app does, and holding four hundred kilobytes there for the rest of a
+   * show day to show a thumbnail nobody may open is memory spent for nothing.
+   * The viewer reads the file off the disk instead.
+   */
+  final Uint8List? bytes;
+
+  EvidenceShot withoutBytes() =>
+      EvidenceShot(ok: ok, ms: ms, file: file, error: error);
 
   String get status => ok ? 'ok' : 'failed';
 
@@ -105,6 +119,7 @@ class EvidenceCapture {
         ok: true,
         ms: sw.elapsedMilliseconds,
         file: path,
+        bytes: bytes,
       ));
     } catch (e) {
       if (sw.isRunning) sw.stop();
@@ -117,8 +132,60 @@ class EvidenceCapture {
   }
 
   static EvidenceShot _remember(EvidenceShot s) {
-    last = s;
+    last = s.withoutBytes();
     return s;
+  }
+
+  /*
+   * FORTY-EIGHT HOURS, AND THEN THE TABLET LETS GO.
+   *
+   * The server holds the copy that matters - it is authenticated, it carries the
+   * server's own timestamp, and deleting from it is manual and always will be.
+   * What sits here is the staging post, and a tablet that never forgets fills up
+   * in the middle of a season.
+   *
+   * WHEN THE OUTBOX ARRIVES (stage 5) THIS HAS TO CHANGE: a file still waiting
+   * to be uploaded must be exempt, or two days without a network would delete
+   * evidence that never reached the server at all. Today nothing queues, so age
+   * alone is the rule.
+   *
+   * Failures are swallowed per file. A locked or vanished file is not a reason
+   * to stop cleaning up the rest, and none of this is worth a word on screen.
+   */
+  static const Duration keepFor = Duration(hours: 48);
+
+  static Future<int> pruneOld() async {
+    var removed = 0;
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final root = Directory('${docs.path}${Platform.pathSeparator}evidence');
+      if (!root.existsSync()) return 0;
+      final cutoff = DateTime.now().subtract(keepFor);
+
+      await for (final e in root.list(recursive: true, followLinks: false)) {
+        if (e is! File) continue;
+        try {
+          if ((await e.lastModified()).isBefore(cutoff)) {
+            await e.delete();
+            removed++;
+          }
+        } catch (_) {}
+      }
+
+      // Second pass: the folders the files leave behind. Deepest first, so a
+      // class folder can go once its judge folders have.
+      final dirs = <Directory>[];
+      await for (final e in root.list(recursive: true, followLinks: false)) {
+        if (e is Directory) dirs.add(e);
+      }
+      dirs.sort((a, b) => b.path.length.compareTo(a.path.length));
+      for (final d in dirs) {
+        try {
+          if (d.listSync().isEmpty) await d.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return removed;
   }
 
   static Future<String> _pathFor(Map<String, dynamic> moment) async {
