@@ -230,7 +230,23 @@ function buildDashboardState() {
         judge_color_hex: getHex(t.tablet_color) || '#6b7280',
         online: true,
       },
-      tablet: { ...t, loginStatus },
+      /*
+       * `...t` is the DATABASE ROW and nothing else.
+       *
+       * last_evidence and evidence_bridge live in memory - deliberately, because
+       * a value that outlives the process that observed it is a stale flag that
+       * looks live. So they have to be spread in here by hand; a reader who
+       * assumed the row carried everything would see them silently missing, which
+       * is exactly what happened on 26/09 when they were first added to
+       * buildTabletsListState instead and the dashboard showed nothing for an
+       * hour.
+       */
+      tablet: {
+        ...t,
+        loginStatus,
+        last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
+        evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
+      },
     };
   });
 
