@@ -16,11 +16,12 @@ class EvidenceShot {
   /// Whether a file ended up on the disk.
   final bool ok;
 
-  /// How long takeScreenshot itself took.
+  /// How long this took, from the page's announcement to the pixels being taken.
   ///
-  /// This is the number the race is about, so it is the one measured: the window
-  /// between the judge pressing SEND and the pixels being grabbed. Writing the
-  /// file afterwards cannot change what is in it.
+  /// The settle wait is INSIDE this number on purpose. What matters is the whole
+  /// window between the judge pressing SEND and the frame being grabbed, because
+  /// that is what races the admin pushing the next horse - not the cost of the
+  /// screenshot call on its own.
   final int ms;
 
   final String? file;
@@ -61,6 +62,9 @@ class EvidenceShot {
  * finding and not a detail to resolve by picking one.
  */
 class EvidenceCapture {
+  /// Time given to the native WebView surface to catch up with the page's paint.
+  static const Duration _settleDelay = Duration(milliseconds: 150);
+
   /// The most recent attempt, for the viewer in the kiosk menu.
   ///
   /// Nothing is uploaded at this stage, so without a way to look at the file on
@@ -74,6 +78,25 @@ class EvidenceCapture {
   }) async {
     final sw = Stopwatch()..start();
     try {
+      /*
+       * WHY THIS WAITS - FOUND ON A TABLET, 26/09
+       *
+       * The page already waits for its own paint before announcing, through two
+       * nested requestAnimationFrames, so by the time this runs the browser has
+       * drawn the screen without the confirmation dialog.
+       *
+       * This covers a different gap, and it is not the same wait twice. What
+       * takeScreenshot draws from is the native WebView surface, and the browser
+       * having painted does not guarantee that surface has been recomposited in
+       * the same instant.
+       *
+       * It is affordable rather than careful: the judge cannot change horse at
+       * all, so the only thing that can replace the screen is the admin pushing
+       * the next one, about three seconds away. A capture measured at 49ms plus
+       * this is still under a tenth of that.
+       */
+      await Future<void>.delayed(_settleDelay);
+
       final Uint8List? bytes = await controller.takeScreenshot(
         screenshotConfiguration: ScreenshotConfiguration(
           compressFormat: CompressFormat.JPEG,
