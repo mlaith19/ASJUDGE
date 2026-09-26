@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -14,6 +15,7 @@ class EvidenceShot {
     this.file,
     this.error,
     this.bytes,
+    this.composeMs = 0,
   });
 
   /// Whether a file ended up on the disk.
@@ -41,8 +43,15 @@ class EvidenceShot {
    */
   final Uint8List? bytes;
 
+  /// How long composing the two frames and burning the caption took.
+  ///
+  /// Kept apart from ms on purpose. ms is the window that races the admin's next
+  /// horse; this happens after the frame is already taken and cannot change what
+  /// is in it - it only delays the upload.
+  final int composeMs;
+
   EvidenceShot withoutBytes() =>
-      EvidenceShot(ok: ok, ms: ms, file: file, error: error);
+      EvidenceShot(ok: ok, ms: ms, file: file, error: error, composeMs: composeMs);
 
   String get status => ok ? 'ok' : 'failed';
 
@@ -112,10 +121,32 @@ class EvidenceCapture {
         ));
       }
 
+      /*
+       * THE SECOND HALF OF THE EVIDENCE.
+       *
+       * The screen proves what was entered. The face proves who entered it, and
+       * the caption makes the file prove both about itself - a .jpg that has
+       * been moved out of its folder is otherwise a picture of a screen with
+       * nothing tying it to a horse, a judge or a moment.
+       *
+       * Everything here is optional and nothing here can fail the capture. No
+       * camera, camera switched off, a frame that will not decode - each one
+       * leaves the screenshot exactly as it was, which is the half that proves
+       * the score.
+       */
+      final cw = Stopwatch()..start();
+      Uint8List finalBytes = bytes;
+      try {
+        finalBytes = await _compose(bytes, moment);
+      } catch (_) {
+        finalBytes = bytes;
+      }
+      cw.stop();
+
       final path = await _pathFor(moment);
       final f = File(path);
       await f.parent.create(recursive: true);
-      await f.writeAsBytes(bytes, flush: true);
+      await f.writeAsBytes(finalBytes, flush: true);
 
       /*
        * THE SIDECAR IS WHAT MAKES THIS FILE RE-SENDABLE.
@@ -145,7 +176,8 @@ class EvidenceCapture {
         ok: true,
         ms: sw.elapsedMilliseconds,
         file: path,
-        bytes: bytes,
+        bytes: finalBytes,
+        composeMs: cw.elapsedMilliseconds,
       ));
     } catch (e) {
       if (sw.isRunning) sw.stop();
@@ -155,6 +187,70 @@ class EvidenceCapture {
         error: e.toString(),
       ));
     }
+  }
+
+  /*
+   * THE FACE GOES BESIDE THE SCREEN, NOT ON TOP OF IT.
+   *
+   * The canvas grows by a strip at the bottom and the camera frame lives there,
+   * with the caption. An inset in a corner would have covered something, and
+   * every corner of the judging screen has something in it - the horse strip,
+   * the score column, the handler rating. A capture that hides part of what it
+   * is supposed to prove is worth less than one that is simply taller.
+   */
+  static Future<Uint8List> _compose(Uint8List shot, Map<String, dynamic> moment) async {
+    final base = img.decodeJpg(shot);
+    if (base == null) return shot;
+
+    // Only if the show asked for it AND a camera actually answered.
+    img.Image? face;
+    if (moment['camera'] == true && cameraOpen) {
+      try {
+        final pic = await _cam!.takePicture();
+        final raw = img.decodeImage(await pic.readAsBytes());
+        // EXIF rather than pixels: a front camera commonly reports its rotation
+        // instead of applying it, and an un-baked frame lands on its side.
+        if (raw != null) face = img.bakeOrientation(raw);
+      } catch (_) {
+        face = null;
+      }
+    }
+
+    const strip = 200;
+    final out = img.Image(width: base.width, height: base.height + strip);
+    img.fill(out, color: img.ColorRgb8(0, 0, 0));
+    img.compositeImage(out, base, dstX: 0, dstY: 0);
+
+    var textX = 16;
+    if (face != null) {
+      const h = strip - 16;
+      final w = (face.width * h / face.height).round();
+      final thumb = img.copyResize(face, width: w, height: h);
+      img.compositeImage(out, thumb, dstX: 8, dstY: base.height + 8);
+      textX = 8 + w + 16;
+    }
+
+    final horse = _digits(moment['horseNumber']);
+    final line1 = '#${horse.isEmpty ? '?' : horse}  ${(moment['horseName'] ?? '').toString()}';
+    /*
+     * BOTH identities, never one.
+     *
+     * judgeLabel is the seat the tablet is assigned to; judgeNickname is the
+     * account signed in on the scoring page. They agree on an ordinary day, and
+     * the day they do not is exactly what a system of evidence exists to catch.
+     * Printing one of them would decide which is true.
+     */
+    final line2 = 'JUDGE ${(moment['judgeLabel'] ?? '?').toString()}'
+        '  /  ${(moment['judgeNickname'] ?? '?').toString()}';
+    final line3 = 'TABLET ${(moment['clientSentAt'] ?? '').toString()}';
+
+    final white = img.ColorRgb8(255, 255, 255);
+    final grey = img.ColorRgb8(170, 170, 170);
+    img.drawString(out, line1, font: img.arial48, x: textX, y: base.height + 16, color: white);
+    img.drawString(out, line2, font: img.arial24, x: textX, y: base.height + 84, color: white);
+    img.drawString(out, line3, font: img.arial24, x: textX, y: base.height + 118, color: grey);
+
+    return Uint8List.fromList(img.encodeJpg(out, quality: 80));
   }
 
   static EvidenceShot _remember(EvidenceShot s) {
