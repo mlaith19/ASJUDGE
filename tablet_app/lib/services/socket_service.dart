@@ -322,6 +322,14 @@ class SocketService with WidgetsBindingObserver {
     _lastEvidenceSummary = summary.trim();
   }
 
+  /// 'ok' | 'missing' | 'no-callHandler' | 'error' | 'probe-failed' | ''
+  /// Set once per page load by _probeEvidenceBridge - see the note there.
+  String _bridgeStatus = '';
+
+  void setBridgeStatus(String status) {
+    _bridgeStatus = status.trim();
+  }
+
   /// For DEBUG: keys that will be merged into next emit.
   List<String> debugLastPayloadKeys() => _lastHeartbeatPayload.keys.toList();
 
@@ -369,6 +377,7 @@ class SocketService with WidgetsBindingObserver {
       'signedInJudgeLetter': _signedInLetter,
       'signedInJudgeName': _signedInName,
       if (_lastEvidenceSummary.isNotEmpty) 'lastEvidence': _lastEvidenceSummary,
+      if (_bridgeStatus.isNotEmpty) 'evidenceBridge': _bridgeStatus,
       ...merged,
     };
     try {

@@ -1123,6 +1123,51 @@ class _WebViewScreenState extends State<WebViewScreen>
     _log('[EVIDENCE] handler installed');
   }
 
+  /*
+   * IS THE BRIDGE ACTUALLY THERE?
+   *
+   * captureEvidence is announced by the page and swallowed silently on this side
+   * if anything goes wrong - deliberately, because a judge pressing SEND must
+   * never see a problem of ours. The cost of that choice is that a bridge which
+   * is simply absent looks exactly like a bridge that works and had nothing to
+   * report. This tells the two apart.
+   *
+   * The question is real and not theoretical. The plugin's own documentation says
+   * that on Android, when the WebView does not support DOCUMENT_START_SCRIPT,
+   * window.flutter_inappwebview does not exist until a
+   * flutterInAppWebViewPlatformReady event has fired - so on an older tablet the
+   * object the page calls may never appear at all.
+   *
+   * The answer rides the heartbeat to the management screen rather than going to
+   * a log, for the same reason the evidence line does: a log on a tablet in a
+   * hall is a log nobody can reach without a cable.
+   *
+   * It keeps earning its place after today. A tablet whose bridge is dead is a
+   * tablet that will score a whole class and photograph none of it, and that is
+   * worth seeing before a show rather than after.
+   */
+  Future<void> _probeEvidenceBridge() async {
+    final c = _controller;
+    if (c == null) return;
+    try {
+      final raw = await c.evaluateJavascript(source: """
+        (function () {
+          try {
+            var b = window.flutter_inappwebview;
+            if (!b) return 'missing';
+            return (typeof b.callHandler === 'function') ? 'ok' : 'no-callHandler';
+          } catch (e) { return 'error'; }
+        })()
+      """);
+      final status = _unwrapJsString(raw).trim();
+      _log('[EVIDENCE] bridge probe: $status');
+      _socketService?.setBridgeStatus(status.isEmpty ? 'unknown' : status);
+    } catch (e) {
+      _log('[EVIDENCE] bridge probe failed: $e');
+      _socketService?.setBridgeStatus('probe-failed');
+    }
+  }
+
   /// How long the loading card may stay up without onLoadStop arriving.
   ///
   /// Long enough that a slow page is not interrupted by its own spinner
@@ -1547,6 +1592,9 @@ class _WebViewScreenState extends State<WebViewScreen>
                   onLoadStop: (_, url) async {
                     await _pullToRefresh?.endRefreshing();
                     await _onPageFinished(url);
+                    // After the page is up, so the answer is about the page the
+                    // judge is actually looking at.
+                    await _probeEvidenceBridge();
                   },
                   /*
                    * Main frame only.

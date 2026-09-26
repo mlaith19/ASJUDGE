@@ -42,6 +42,16 @@ const lastAppActiveByDeviceId = new Map();
  * This puts it on the management screen within three seconds.
  */
 const lastEvidenceByDeviceId = new Map();
+
+/*
+ * Whether the page's bridge to the tablet shell exists at all, per device.
+ *
+ * A capture that never happens and a capture that had nothing to report look
+ * identical from here - the evidence line is empty either way. This says which,
+ * and it is the difference between "no scores sent yet" and "this tablet will
+ * photograph nothing all day".
+ */
+const evidenceBridgeByDeviceId = new Map();
 /** deviceId: tablet is on the setup/assign screen (registered with empty judgeLetter or heartbeat says setup_screen). */
 const tabletInSetupByDeviceId = new Set();
 /** deviceId: tablet registered as Admin View (__ADMIN__). Receives admin_alert commands. */
@@ -262,6 +272,7 @@ function buildTabletsListState() {
     latency_ms: lastLatencyMsByDeviceId.get(t.device_id) ?? null,
     app_active: (lastAppActiveByDeviceId.has(t.device_id) ? lastAppActiveByDeviceId.get(t.device_id) : null),
     last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
+    evidence_bridge: (evidenceBridgeByDeviceId.get(t.device_id) || null),
   }));
   let onlineCount = 0;
   withLive.forEach((t) => { if (t.isLiveOnline) onlineCount++; });
@@ -509,6 +520,7 @@ function onTabletDisconnected(deviceId) {
   // Forgotten with the tablet: an evidence line from a device that has gone is
   // the same lie as an is_online flag nobody cleared.
   lastEvidenceByDeviceId.delete(deviceId);
+  evidenceBridgeByDeviceId.delete(deviceId);
   signedInJudgeByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
@@ -723,6 +735,10 @@ function init(httpServer, sessionMiddleware) {
         if (!Number.isNaN(latNum)) lastLatencyMsByDeviceId.set(devId, latNum);
       } catch (_) {}
       try {
+        const br = payload.evidenceBridge ?? payload.evidence_bridge;
+        if (br != null && String(br).trim() !== '') {
+          evidenceBridgeByDeviceId.set(devId, String(br).trim().slice(0, 24));
+        }
         const ev = payload.lastEvidence ?? payload.last_evidence;
         if (ev != null && String(ev).trim() !== '') {
           const prev = lastEvidenceByDeviceId.get(devId);
