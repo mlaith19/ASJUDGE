@@ -28,6 +28,20 @@ const signedInJudgeByDeviceId = new Map();
 const lastLatencyMsByDeviceId = new Map();
 /** deviceId -> last app active state (boolean), reported by tablet in heartbeat. */
 const lastAppActiveByDeviceId = new Map();
+
+/*
+ * The last score each tablet was asked to photograph, and when.
+ *
+ * In memory, not in the database: it is a liveness signal, like the heartbeat
+ * that carries it, and a value that outlives the process it was observed in
+ * would be exactly the kind of stale-flag-that-looks-live this file already had
+ * trouble with once (see updateOnlineStatus in tabletService).
+ *
+ * What it is FOR: a tablet that is scoring and producing no evidence is the
+ * failure nobody would otherwise notice - the judging looks perfectly normal.
+ * This puts it on the management screen within three seconds.
+ */
+const lastEvidenceByDeviceId = new Map();
 /** deviceId: tablet is on the setup/assign screen (registered with empty judgeLetter or heartbeat says setup_screen). */
 const tabletInSetupByDeviceId = new Set();
 /** deviceId: tablet registered as Admin View (__ADMIN__). Receives admin_alert commands. */
@@ -247,6 +261,7 @@ function buildTabletsListState() {
     isLiveOnline: isTabletLiveOnline(t.device_id),
     latency_ms: lastLatencyMsByDeviceId.get(t.device_id) ?? null,
     app_active: (lastAppActiveByDeviceId.has(t.device_id) ? lastAppActiveByDeviceId.get(t.device_id) : null),
+    last_evidence: (lastEvidenceByDeviceId.get(t.device_id) || null),
   }));
   let onlineCount = 0;
   withLive.forEach((t) => { if (t.isLiveOnline) onlineCount++; });
@@ -491,6 +506,9 @@ function onTabletDisconnected(deviceId) {
   const wasAdmin = adminTabletDeviceIds.has(deviceId);
   tabletSockets.delete(deviceId);
   lastHeartbeatByDeviceId.delete(deviceId);
+  // Forgotten with the tablet: an evidence line from a device that has gone is
+  // the same lie as an is_online flag nobody cleared.
+  lastEvidenceByDeviceId.delete(deviceId);
   signedInJudgeByDeviceId.delete(deviceId);
   tabletInSetupByDeviceId.delete(deviceId);
   adminTabletDeviceIds.delete(deviceId);
@@ -703,6 +721,29 @@ function init(httpServer, sessionMiddleware) {
         const lat = payload.latency_ms ?? payload.latencyMs;
         const latNum = lat != null ? parseInt(String(lat), 10) : NaN;
         if (!Number.isNaN(latNum)) lastLatencyMsByDeviceId.set(devId, latNum);
+      } catch (_) {}
+      try {
+        const ev = payload.lastEvidence ?? payload.last_evidence;
+        if (ev != null && String(ev).trim() !== '') {
+          const prev = lastEvidenceByDeviceId.get(devId);
+          /*
+           * Only when the summary CHANGES, and stamped by this server.
+           *
+           * The tablet repeats the same line on every heartbeat, three seconds
+           * apart, so taking the time from each arrival would make a capture from
+           * ten minutes ago read as "just now" for as long as the tablet stayed
+           * connected. The first heartbeat carrying a new summary is the moment.
+           *
+           * And the stamp is Date.now() here, not the tablet's own lastEvidenceAt.
+           * A tablet clock can be wrong or simply unset - that is the whole reason
+           * the decided design has the SERVER stamping evidence - and an age
+           * computed from it would colour a stale row green.
+           */
+          const summary = String(ev).trim().slice(0, 60);
+          if (!prev || prev.summary !== summary) {
+            lastEvidenceByDeviceId.set(devId, { summary, atMs: Date.now() });
+          }
+        }
       } catch (_) {}
       try {
         const aa = payload.app_active ?? payload.appActive;

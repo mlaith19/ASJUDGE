@@ -297,6 +297,31 @@ class SocketService with WidgetsBindingObserver {
     _signedInName = name.trim();
   }
 
+  /*
+   * THE LAST SCORE THIS TABLET WAS ASKED TO PHOTOGRAPH.
+   *
+   * Its own field, not a key in _lastHeartbeatPayload, for the same reason the
+   * two above are: that map is REPLACED wholesale on every updateHeartbeatPayload
+   * call, and this has to outlive the three-second telemetry tick that follows it.
+   *
+   * It rides the heartbeat rather than going to a log because a log on a tablet
+   * in a hall is a log nobody reads - seeing it needs a cable. This appears on the
+   * management screen within three seconds, from anywhere.
+   *
+   * And it is not only for proving the bridge works. It is the answer to what was
+   * decided about a camera that fails: the score always goes, and the missing
+   * evidence has to be visible somewhere. This is that somewhere.
+   *
+   * No time is sent with it. The tablet repeats the same summary on every
+   * heartbeat, and the server stamps the first one carrying a new value - which
+   * is both the real moment and a clock nobody can have set wrong.
+   */
+  String _lastEvidenceSummary = '';
+
+  void setLastEvidence(String summary) {
+    _lastEvidenceSummary = summary.trim();
+  }
+
   /// For DEBUG: keys that will be merged into next emit.
   List<String> debugLastPayloadKeys() => _lastHeartbeatPayload.keys.toList();
 
@@ -343,6 +368,7 @@ class SocketService with WidgetsBindingObserver {
       // of its own any more, so this is what names a dashboard column.
       'signedInJudgeLetter': _signedInLetter,
       'signedInJudgeName': _signedInName,
+      if (_lastEvidenceSummary.isNotEmpty) 'lastEvidence': _lastEvidenceSummary,
       ...merged,
     };
     try {

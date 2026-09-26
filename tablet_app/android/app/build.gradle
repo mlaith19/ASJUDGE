@@ -44,7 +44,28 @@ android {
         //
         // A new id means a new app to Android: its own storage, its own settings,
         // and a fresh deviceId - each tablet registers in the admin panel again.
-        applicationId "net.mlsystems.arabian.judge"
+        //
+        // V2, AND BOTH APPS LIVE ON THE TABLET AT ONCE - ON PURPOSE.
+        //
+        // The evidence build is a separate app from the one judging a real show,
+        // so a tablet always has the working app one home-press away. That is the
+        // whole reason for the suffix: installing V2 cannot touch the build the
+        // hall depends on, and going back is opening the other icon rather than
+        // uninstalling anything.
+        //
+        // Both run full kiosk. Only ONE of the two things kiosk means is
+        // exclusive: startLockTask() (Android screen pinning) belongs to whichever
+        // app holds it, while immersive mode and the wakelock are per-foreground-app
+        // and never collide. The way across already exists and is the one the
+        // operator already uses - five taps, Unlock (main.dart:187), home, open the
+        // other, and it pins itself on launch (main.dart:56).
+        //
+        // The cost, stated so nobody is surprised by it: a separate id means
+        // separate shared_preferences, so V2 carries its OWN deviceId and registers
+        // as another tablet. Three tablets show six rows, and the app not running
+        // reads OFFLINE. That is not noise - it is which of the two is live, without
+        // having to ask.
+        applicationId "net.mlsystems.arabian.judge.v2"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()

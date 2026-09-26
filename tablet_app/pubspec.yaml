@@ -7,7 +7,11 @@ publish_to: 'none'
 # tablet was already running. The WebView engine and the refresh gesture changed
 # under it; the number had to move with them. Bump this on every build worth
 # handing to somebody.
-version: 1.1.1+3
+# 2.x is the evidence build, and it is a DIFFERENT APP to Android - see the
+# applicationId note in android/app/build.gradle. Its build numbers are therefore
+# their own series and have nothing to do with the 1.x running in the hall; the
+# two never install over each other.
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

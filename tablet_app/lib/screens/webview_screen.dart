@@ -1070,6 +1070,59 @@ class _WebViewScreenState extends State<WebViewScreen>
     return 'UNKNOWN';
   }
 
+  /*
+   * THE PAGE'S WAY OF SAYING "A SCORE JUST WENT".
+   *
+   * The judging screen runs inside this WebView and cannot photograph itself -
+   * a page has no way to capture the pixels it is drawn as, and no way to reach
+   * the camera the way this evidence needs it. Flutter can do both. So the page
+   * announces the moment and this side does the work.
+   *
+   * STAGE 1 OF THE PLAN, AND DELIBERATELY EMPTY.
+   * Right now it only writes down what it was told. No screenshot, no camera, no
+   * upload - those are stages 2, 3 and 4. What is being proven here is that the
+   * call arrives at all, and arrives with the right horse on it. Building the
+   * capture on top of a bridge nobody had watched work would mean debugging two
+   * new things at once, on a tablet, in a hall.
+   *
+   * It answers, always. The page does not wait for the answer, but a handler that
+   * throws would surface in the page's console as a rejected promise, and this
+   * must never be the reason anybody looks twice at the scoring screen.
+   */
+  void _installEvidenceHandler(InAppWebViewController c) {
+    c.addJavaScriptHandler(
+      handlerName: 'captureEvidence',
+      callback: (args) {
+        try {
+          final payload = (args.isNotEmpty && args.first is Map)
+              ? Map<String, dynamic>.from(args.first as Map)
+              : <String, dynamic>{};
+          _log('[EVIDENCE] ${jsonEncode(payload)}');
+
+          /*
+           * Onto the heartbeat, so it is visible on the management screen within
+           * three seconds instead of inside a logcat nobody can reach.
+           *
+           * Deliberately short - the heartbeat goes out every 3 seconds and this
+           * rides along on every one of them. Horse and judge are what identify
+           * the moment; the full payload stays in the log.
+           */
+          final horse = payload['horseNumber'];
+          final who = (payload['judgeNickname'] ?? '').toString();
+          _socketService?.setLastEvidence('#$horse $who');
+
+          return {'ok': true, 'stage': 1};
+        } catch (e) {
+          // Swallowed on purpose: see the note above. A broken bridge is a
+          // missing photograph, never a disturbed judge.
+          _log('[EVIDENCE] handler error: $e');
+          return {'ok': false, 'error': e.toString()};
+        }
+      },
+    );
+    _log('[EVIDENCE] handler installed');
+  }
+
   /// How long the loading card may stay up without onLoadStop arriving.
   ///
   /// Long enough that a slow page is not interrupted by its own spinner
@@ -1468,7 +1521,10 @@ class _WebViewScreenState extends State<WebViewScreen>
                     mediaPlaybackRequiresUserGesture: false,
                   ),
                   pullToRefreshController: _pullToRefresh,
-                  onWebViewCreated: (c) => _controller = c,
+                  onWebViewCreated: (c) {
+                    _controller = c;
+                    _installEvidenceHandler(c);
+                  },
                   onLoadStart: (_, __) {
                     if (!mounted) return;
                     setState(() => _loading = true);
