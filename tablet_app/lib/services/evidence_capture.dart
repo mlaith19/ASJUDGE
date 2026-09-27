@@ -216,14 +216,24 @@ class EvidenceCapture {
       }
     }
 
-    const strip = 200;
+    await _ensureSignature();
+    final sig = _signature;
+
+    /*
+     * 260 with a signature, 200 without.
+     *
+     * A fixed 260 would leave an empty black band on every capture from a judge
+     * who has not signed - which reads as something having fallen off the
+     * picture rather than as something that was never there.
+     */
+    final strip = sig != null ? 260 : 200;
     final out = img.Image(width: base.width, height: base.height + strip);
     img.fill(out, color: img.ColorRgb8(0, 0, 0));
     img.compositeImage(out, base, dstX: 0, dstY: 0);
 
     var textX = 16;
     if (face != null) {
-      const h = strip - 16;
+      final h = strip - 16;
       final w = (face.width * h / face.height).round();
       final thumb = img.copyResize(face, width: w, height: h);
       img.compositeImage(out, thumb, dstX: 8, dstY: base.height + 8);
@@ -257,6 +267,31 @@ class EvidenceCapture {
     img.drawString(out, line1, font: img.arial48, x: textX, y: base.height + 16, color: white);
     img.drawString(out, line2, font: img.arial24, x: textX, y: base.height + 84, color: white);
     img.drawString(out, line3, font: img.arial24, x: textX, y: base.height + 118, color: grey);
+
+    /*
+     * The declaration, at the far right of the strip.
+     *
+     * It is the judge's own hand and it belongs where a signature belongs - the
+     * end of the statement, not over it. Width is capped at a third of the frame
+     * so a wide scrawl cannot push itself across the caption.
+     */
+    if (sig != null) {
+      final maxW = (out.width * 0.33).round();
+      final maxH = strip - 60;
+      var w = (sig.width * maxH / sig.height).round();
+      var h = maxH;
+      if (w > maxW) {
+        w = maxW;
+        h = (sig.height * w / sig.width).round();
+      }
+      final stamp = img.copyResize(sig, width: w, height: h);
+      img.compositeImage(
+        out,
+        stamp,
+        dstX: out.width - w - 20,
+        dstY: base.height + ((strip - h) ~/ 2),
+      );
+    }
 
     return Uint8List.fromList(img.encodeJpg(out, quality: 80));
   }
@@ -376,6 +411,54 @@ class EvidenceCapture {
     } finally {
       if (!wasOpen) await releaseCamera();
     }
+  }
+
+  /*
+   * THE JUDGE'S SIGNATURE FOR THIS SHOW.
+   *
+   * Handed over by the page, once, because only the page can fetch it - the
+   * session cookie is there and nowhere else. Sending it with every capture
+   * would be the same ten kilobytes three hundred times a day across a bridge
+   * already carrying half a megabyte of photograph.
+   *
+   * Written to disk as well as held in memory: a tablet that is restarted
+   * mid-show would otherwise stop signing its evidence until somebody noticed
+   * and asked the judge again.
+   */
+  static img.Image? _signature;
+  static bool _signatureLoaded = false;
+
+  static Future<File?> _signatureFile() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      return File('${docs.path}${Platform.pathSeparator}judge_signature.png');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> setSignature(String base64Png) async {
+    try {
+      final bytes = base64Decode(base64Png);
+      _signature = img.decodePng(bytes);
+      _signatureLoaded = true;
+      final f = await _signatureFile();
+      if (f != null) await f.writeAsBytes(bytes, flush: true);
+    } catch (_) {
+      // A signature that will not decode is a capture without one, never a
+      // capture that fails.
+    }
+  }
+
+  static Future<void> _ensureSignature() async {
+    if (_signatureLoaded) return;
+    _signatureLoaded = true;
+    try {
+      final f = await _signatureFile();
+      if (f != null && f.existsSync()) {
+        _signature = img.decodePng(await f.readAsBytes());
+      }
+    } catch (_) {}
   }
 
   static const Duration keepFor = Duration(hours: 48);

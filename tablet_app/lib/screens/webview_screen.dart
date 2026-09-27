@@ -1195,6 +1195,28 @@ class _WebViewScreenState extends State<WebViewScreen>
       },
     );
 
+    /*
+      * The judge's declaration, handed over once per show.
+      *
+      * Only the page can fetch it - /api/signatures wants a session cookie and
+      * the shell has none - so it arrives here rather than being downloaded.
+      */
+    c.addJavaScriptHandler(
+      handlerName: 'judgeSignature',
+      callback: (args) async {
+        try {
+          final b64 = (args.isNotEmpty ? args.first : '').toString();
+          if (b64.isEmpty) return {'ok': false};
+          await EvidenceCapture.setSignature(b64);
+          _log('[EVIDENCE] signature stored (${b64.length} chars)');
+          return {'ok': true};
+        } catch (e) {
+          _log('[EVIDENCE] signature error: $e');
+          return {'ok': false};
+        }
+      },
+    );
+
     c.addJavaScriptHandler(
       handlerName: 'evidenceAck',
       callback: (args) async {
