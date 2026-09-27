@@ -230,8 +230,16 @@ class EvidenceCapture {
       textX = 8 + w + 16;
     }
 
+    /*
+     * A championship has no single horse.
+     *
+     * The card is five placings and the picture shows all of them, so the line
+     * is the championship's own name. A "#?" in front of it would read as a
+     * horse that went missing rather than one that never existed.
+     */
     final horse = _digits(moment['horseNumber']);
-    final line1 = '#${horse.isEmpty ? '?' : horse}  ${(moment['horseName'] ?? '').toString()}';
+    final who = (moment['horseName'] ?? '').toString().trim();
+    final line1 = horse.isEmpty ? who : '#$horse  $who';
     /*
      * BOTH identities, never one.
      *
