@@ -1170,12 +1170,31 @@ class _WebViewScreenState extends State<WebViewScreen>
            * heartbeat, so the margin becomes a number instead of an estimate.
            */
           /*
-            * Stage 4a: the show's CAM switch decides whether the sensor is held
-            * open at all. Nothing is photographed with it yet - this exists so
-            * the battery and heat cost can be read off the dashboard before the
-            * rest of it is built.
+            * AWAITED WHEN IT IS BEING TURNED ON. THIS WAS THE BUG.
+            *
+            * It used to be unawaited, and the very next line composed the
+            * picture - which checks whether a camera is open and takes a frame
+            * if one is. Opening a camera is availableCameras() plus
+            * CameraController.initialize(), several hundred milliseconds, so on
+            * the first send of a show the answer was always "no camera yet" and
+            * the strip came back with no face. Nothing in the code said so; it
+            * simply skipped that half, exactly as it does when the show has the
+            * switch off.
+            *
+            * Turning it OFF stays unawaited - nothing downstream waits on a
+            * sensor being let go, and the release should not hold up a capture.
+            *
+            * The wait costs the first capture of a class a few hundred
+            * milliseconds. It costs nothing that matters: by this point the
+            * screen is already in its locked SENT state and is not going to
+            * change, so a slightly later frame is the same frame.
             */
-          unawaited(EvidenceCapture.setCameraOpen(payload['camera'] == true));
+          final wantsCamera = payload['camera'] == true;
+          if (wantsCamera) {
+            await EvidenceCapture.setCameraOpen(true);
+          } else {
+            unawaited(EvidenceCapture.setCameraOpen(false));
+          }
 
           final shot = await _captureEvidenceShot(c, payload);
 
