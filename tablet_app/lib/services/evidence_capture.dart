@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// One attempt at photographing what the judge was looking at.
 class EvidenceShot {
@@ -361,6 +362,20 @@ class EvidenceCapture {
     }
     if (cameraOpen) return;
     try {
+      /*
+       * NOT GRANTED MEANS NO CAMERA - IT NEVER MEANS "ASK NOW".
+       *
+       * CameraController.initialize() raises the Android permission dialog by
+       * itself, and the only moments this runs are moments in a class. A judge
+       * must never be handed a system dialog over his scoring screen, and a
+       * dialog must never be what the evidence photographs.
+       *
+       * So the answer is read and obeyed. No permission is a capture of the
+       * SCREEN alone - which is the record of the score and the part that
+       * matters - and the Setup screen's Camera check is where it is put right,
+       * on the bench, before anybody judges anything.
+       */
+      if (!await Permission.camera.isGranted) return;
       final desc = await _frontCamera();
       if (desc == null) return;
       /*

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 /*
  * flutter_inappwebview, not webview_flutter.
@@ -164,7 +165,40 @@ class _WebViewScreenState extends State<WebViewScreen>
         _permissionDialogShown = true;
         _showPermissionDialog();
       }
+      if (!mounted) return;
+      await _askCameraOnce();
     });
+  }
+
+  /*
+   * THE CAMERA PERMISSION IS ASKED AT THE FIRST LAUNCH, NOT AT THE FIRST PHOTO.
+   *
+   * Android has not asked at install time since version 6: a permission is
+   * granted at the moment the app first uses the thing. For a camera that is
+   * only ever used by the evidence capture, that moment was the first SEND of
+   * the show - so an Android dialog came up over the judging screen, in the
+   * middle of a class, in front of the judge, and landed in the very frame the
+   * capture was taking.
+   *
+   * So it is asked here instead, while the tablet is still on the bench and the
+   * person holding it is the one setting it up.
+   *
+   * ONCE per install, remembered whatever the answer was. Android stops showing
+   * the dialog after two refusals anyway, and an app that asks again at every
+   * launch is an app somebody switches off. The Setup screen's Camera check
+   * stays the way to come back to it deliberately.
+   */
+  Future<void> _askCameraOnce() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('cameraPermissionAsked') == true) return;
+      await prefs.setBool('cameraPermissionAsked', true);
+      final status = await Permission.camera.status;
+      if (status.isGranted) return;
+      await Permission.camera.request();
+    } catch (_) {
+      /* A tablet that will not answer about its camera still judges a show. */
+    }
   }
 
   @override
