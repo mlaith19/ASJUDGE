@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/scheduler.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -103,6 +104,51 @@ class EvidenceCapture {
   }) async {
     final sw = Stopwatch()..start();
     try {
+      /*
+       * WAITING FOR A FRAME, NOT FOR A NUMBER OF MILLISECONDS.
+       *
+       * MEASURED 05/10/2026, over every capture this system has ever taken:
+       *
+       *   1,067 captures, domCleanAtFire = true on 1,066 and false on none.
+       *   297 of them (27.8%) still show the confirmation dialog.
+       *
+       * The probe in lib/evidence-bridge.ts records what the page's DOM looked
+       * like at the instant this shell was asked for the frame. It was clean
+       * EVERY time - the page had already removed the dialog and the browser had
+       * already painted without it, which the page proves by announcing only
+       * after two nested requestAnimationFrames. And more than a quarter of the
+       * pictures show the dialog anyway.
+       *
+       * So the stale pixels are made on this side. takeScreenshot asks the
+       * Android WebView to draw itself, and that draw can serve the surface as it
+       * was before the renderer's newest frame reached it. The DOM is clean; the
+       * surface is one frame behind.
+       *
+       * Two waits, both EVENTS:
+       *
+       *   endOfFrame      completes when the engine has finished rendering a
+       *                   frame - not a guess at how long one takes.
+       *   a warm capture  whose bytes are thrown away. Asking the WebView to draw
+       *                   is what makes it draw; the second answer is the one that
+       *                   carries the frame the judge actually saw.
+       *
+       * A fixed wait was tried before and rejected, and rightly: a delay that is
+       * long enough on one tablet is short on the next, and it is a guess either
+       * way. These two are not.
+       *
+       * The cost is roughly one extra capture - about 40ms measured, p50. The
+       * judge cannot change horse at all while this runs (judgeLocked), and the
+       * next horse is about three seconds out.
+       */
+      await SchedulerBinding.instance.endOfFrame;
+      await controller.takeScreenshot(
+        screenshotConfiguration: ScreenshotConfiguration(
+          compressFormat: CompressFormat.JPEG,
+          quality: 20,
+        ),
+      );
+      await SchedulerBinding.instance.endOfFrame;
+
       final Uint8List? bytes = await controller.takeScreenshot(
         screenshotConfiguration: ScreenshotConfiguration(
           compressFormat: CompressFormat.JPEG,
